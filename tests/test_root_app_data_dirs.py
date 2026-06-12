@@ -256,6 +256,39 @@ async def test_setup_memory_preload_can_wrap_webview_renderer_targets() -> None:
 
 
 @pytest.mark.unit
+async def test_setup_native_proc_preload_removes_memory_target_and_wraps_package() -> None:
+    class FakeADB:
+        shell_root_commands: list[str] = []
+        props: dict[str, str] = {}
+
+        async def shell(self, command: str, *args, **kwargs) -> str:
+            if command == "test -f /system/bin/app_process64.real && echo OK":
+                return ""
+            if command == "test -f /data/local/tmp/libfakemem.so && echo OK":
+                return "OK\n"
+            if command.startswith("getprop wrap."):
+                key = command.removeprefix("getprop ").strip()
+                return self.props.get(key, "") + "\n"
+            return ""
+
+        async def shell_root(self, command: str, *args, **kwargs) -> str:
+            self.shell_root_commands.append(command)
+            if command.startswith("setprop wrap."):
+                _, key, value = command.split(" ", 2)
+                self.props[key] = value
+            return ""
+
+    adb = FakeADB()
+    await RootOps(adb).setup_native_proc_preload("com.android.browser")
+
+    joined = "\n".join(adb.shell_root_commands)
+    assert "/data/local/tmp/damru_proc_mountinfo" in joined
+    assert "rm -f /data/local/tmp/damru_fakemem_gb" in joined
+    assert "printf '%s\\n'" not in joined
+    assert "setprop wrap.com.android.browser /data/local/tmp/damru_chrome_wrap.sh" in joined
+
+
+@pytest.mark.unit
 async def test_apply_runtime_arch_props_sets_arm_values_and_deletes_leaks() -> None:
     class FakeADB:
         props: dict[str, str] = {}

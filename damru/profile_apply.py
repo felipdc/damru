@@ -173,6 +173,7 @@ async def force_device_profile(
     apply_cpu: bool = True,
     apply_gpu: bool = True,
     apply_memory: bool = True,
+    apply_proc_preload: bool = False,
     clear_proxy: bool = False,
     slot_identity_seed: str | None = None,
 ) -> AppliedDeviceProfile:
@@ -271,6 +272,19 @@ async def force_device_profile(
     await root.repair_app_data_dirs()
 
     native_preload_disabled = _env_truthy("DAMRU_DISABLE_NATIVE_PRELOAD")
+    if apply_proc_preload and not native_preload_disabled and not configure_chrome and browser_package != "com.android.chrome":
+        try:
+            renderer_targets = _webview_renderer_preload_targets()
+            await root.setup_native_proc_preload(
+                browser_package,
+                extra_packages=renderer_targets,
+                restart_webview_zygote=bool(renderer_targets),
+            )
+        except Exception as exc:
+            logger.warning("Native proc preload setup skipped for %s: %s", browser_package, exc)
+    elif apply_proc_preload and native_preload_disabled and not configure_chrome and browser_package != "com.android.chrome":
+        logger.info("Native proc preload disabled for %s by DAMRU_DISABLE_NATIVE_PRELOAD", browser_package)
+
     if apply_memory and not native_preload_disabled and not configure_chrome and browser_package != "com.android.chrome":
         try:
             await root.apply_memory_spoof(device.device_memory)

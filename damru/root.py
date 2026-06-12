@@ -2583,6 +2583,32 @@ echo damru_app_data_dirs_created=$created
             )
         logger.info("Memory preload active for %s via Android wrap property", ", ".join(wrap_targets))
 
+    async def setup_native_proc_preload(
+        self,
+        browser_package: str,
+        *,
+        extra_packages: tuple[str, ...] = (),
+        restart_webview_zygote: bool = False,
+    ) -> None:
+        """Enable the native preload only for proc/status/mountinfo cleanup.
+
+        The shared library also supports memory spoofing, but memory spoofing is
+        activated by the target-GB file. Removing that file lets raw WebView
+        canaries exercise the same deeper /proc filtering without changing the
+        memory surface that previously made harness warmup fragile.
+        """
+        await self.install_native_preload_assets(target_gb=None, force=False)
+        await self.adb.shell_root(f"rm -f {_FAKEMEM_TARGET}", timeout=10)
+        await self.setup_memory_preload(
+            browser_package,
+            extra_packages=extra_packages,
+            restart_webview_zygote=restart_webview_zygote,
+        )
+        logger.info(
+            "Native proc preload active for %s via Android wrap property",
+            browser_package,
+        )
+
     async def remove_memory_preload(
         self,
         chrome_package: str = "com.android.chrome",

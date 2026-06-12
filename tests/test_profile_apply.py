@@ -84,6 +84,9 @@ class FakeRootOps:
     async def setup_memory_preload(self, chrome_package: str, **kwargs) -> None:
         self.calls.append(("root.memory_preload", chrome_package, kwargs))
 
+    async def setup_native_proc_preload(self, browser_package: str, **kwargs) -> None:
+        self.calls.append(("root.proc_preload", browser_package, kwargs))
+
     async def apply_webrtc_block(self, chrome_package: str) -> None:
         self.calls.append(("root.webrtc", chrome_package))
 
@@ -285,6 +288,28 @@ async def test_force_device_profile_can_disable_non_chrome_native_preload(
         call[0] == "root.memory_preload" and call[1] == "com.android.browser"
         for call in FakeRootOps.calls
     )
+
+
+@pytest.mark.unit
+async def test_force_device_profile_can_enable_proc_preload_without_memory() -> None:
+    await profile_apply.force_device_profile(
+        "127.0.0.1:5600",
+        "xiaomi_redmi_9a",
+        timezone="America/Sao_Paulo",
+        locale="pt-BR",
+        configure_chrome=False,
+        browser_package="com.android.browser",
+        apply_memory=False,
+        apply_proc_preload=True,
+    )
+
+    assert ("root.memory", 2) not in FakeRootOps.calls
+    assert not any(call[0] == "root.memory_preload" for call in FakeRootOps.calls)
+    assert (
+        "root.proc_preload",
+        "com.android.browser",
+        {"extra_packages": (), "restart_webview_zygote": False},
+    ) in FakeRootOps.calls
 
 
 @pytest.mark.unit
