@@ -46,6 +46,7 @@ async def test_webview_shell_uses_webview_command_line_and_pref_store() -> None:
 
     prefs = json.loads(adb.pushed["/data/local/tmp/damru_chrome_prefs.json"])
     assert prefs["intl"]["selected_languages"] == "pt-BR,pt,en-US,en"
+    assert prefs["intl"]["accept_languages"] == "pt-BR,pt,en-US,en"
     assert prefs["dns_prefetching"]["enabled"] is False
     assert prefs["net"]["network_prediction_options"] == 2
     assert prefs["webrtc"]["ip_handling_policy"] == "default_public_interface_only"

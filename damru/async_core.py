@@ -476,8 +476,16 @@ class AsyncDamru:
             else:
                 await self._chrome.clear_all_data()
             accept_lang = build_accept_language(self._profile.locale)
+            native_user_agent = (
+                f"Mozilla/5.0 (Linux; Android {target_device.android_version}; {target_device.model}) "
+                f"AppleWebKit/537.36 (KHTML, like Gecko) "
+                f"Chrome/{version or '145.0.0.0'} Mobile Safari/537.36"
+            )
             await asyncio.gather(
-                self._chrome.write_command_line(self._profile.chrome_flags),
+                self._chrome.write_command_line(
+                    self._profile.chrome_flags,
+                    user_agent=native_user_agent,
+                ),
                 self._chrome.patch_preferences(self._profile.locale, accept_lang),
             )
 

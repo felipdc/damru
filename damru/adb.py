@@ -420,6 +420,10 @@ class ADB:
         """Push a file to the device."""
         await self._run(["push", local_path, remote_path], timeout=60)
 
+    async def pull(self, remote_path: str, local_path: str, timeout: float = 180.0) -> None:
+        """Pull a file from the device."""
+        await self._run(["pull", remote_path, local_path], timeout=timeout)
+
     async def install_apk(self, apk_path: str) -> None:
         """Install an APK on the device."""
         await self._run(["install", "-r", apk_path], timeout=120)

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -14,6 +15,9 @@ from .profiles import build_profile
 from .proxy import build_accept_language
 from .proxy_runtime import resolve_android_proxy
 from .root import RootOps
+from .utils import logger
+
+WEBVIEW_RENDERER_WRAP_TARGETS = ("com.android.webview",)
 
 
 @dataclass(frozen=True)
@@ -40,6 +44,16 @@ def _normalize_android_proxy(value: str | None) -> str | None:
     if proxy in {"", "null", ":0"}:
         return None
     return proxy
+
+
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip() in {"1", "true", "TRUE", "yes", "YES", "on", "ON"}
+
+
+def _webview_renderer_preload_targets() -> tuple[str, ...]:
+    if _env_truthy("DAMRU_ENABLE_WEBVIEW_RENDERER_PRELOAD"):
+        return WEBVIEW_RENDERER_WRAP_TARGETS
+    return ()
 
 
 async def _current_android_proxy(adb: ADB) -> str | None:
@@ -104,6 +118,15 @@ def _build_webview_user_agent(device, chrome_version: str | None) -> str:
         f"Chrome/{chrome_ver} Mobile Safari/537.36"
     )
 
+
+def _build_chrome_user_agent(device, chrome_version: str | None) -> str:
+    chrome_ver = chrome_version or "145.0.0.0"
+    return (
+        f"Mozilla/5.0 (Linux; Android {device.android_version}; {device.model}) "
+        f"AppleWebKit/537.36 (KHTML, like Gecko) "
+        f"Chrome/{chrome_ver} Mobile Safari/537.36"
+    )
+
 async def _configure_webview_shell(
     adb: ADB,
     root: RootOps,
@@ -119,7 +142,12 @@ async def _configure_webview_shell(
     if not await chrome.webview_shell_installed(WEBVIEW_SHELL_PACKAGE):
         return
     await adb.shell(f"am force-stop {WEBVIEW_SHELL_PACKAGE}", allow_failure=True)
-    await root.setup_memory_preload(WEBVIEW_SHELL_PACKAGE)
+    renderer_targets = _webview_renderer_preload_targets()
+    await root.setup_memory_preload(
+        WEBVIEW_SHELL_PACKAGE,
+        extra_packages=renderer_targets,
+        restart_webview_zygote=bool(renderer_targets),
+    )
     await asyncio.gather(
         chrome.write_webview_command_line(
             chrome_flags,
@@ -146,6 +174,7 @@ async def force_device_profile(
     apply_gpu: bool = True,
     apply_memory: bool = True,
     clear_proxy: bool = False,
+    slot_identity_seed: str | None = None,
 ) -> AppliedDeviceProfile:
     """Force a named Damru profile onto an existing rooted ADB worker.
 
@@ -196,11 +225,65 @@ async def force_device_profile(
         adb.shell(f"wm density {profile.density_dpi}", allow_failure=True),
         adb.shell("settings put system accelerometer_rotation 0", allow_failure=True),
         adb.shell("settings put system user_rotation 0", allow_failure=True),
-        root.apply_cpu_cores_spoof(device.hardware_concurrency) if apply_cpu else _noop(),
+        root.apply_cpu_cores_spoof(device.hardware_concurrency, device=device) if apply_cpu else _noop(),
     )
+
+    identity_seed = (slot_identity_seed or os.environ.get("DAMRU_SLOT_IDENTITY_SEED") or "").strip()
+    identity_spoof_disabled = _env_truthy("DAMRU_DISABLE_SLOT_IDENTITY_SPOOF")
+    if identity_seed:
+        if identity_spoof_disabled:
+            logger.info("Slot native identity repair disabled by DAMRU_DISABLE_SLOT_IDENTITY_SPOOF")
+        else:
+            try:
+                await root.apply_slot_identity_spoof(identity_seed, device=device)
+            except Exception as exc:
+                logger.warning("Slot native identity repair skipped: %s", exc)
 
     if apply_gpu:
         await root.apply_gpu_binary_spoof(device)
+    else:
+        await root.wait_for_package_manager(timeout=30.0)
+
+    if apply_cpu:
+        try:
+            await root.apply_runtime_arch_props(device)
+        except Exception as exc:
+            logger.warning("Runtime arch prop spoof skipped: %s", exc)
+
+    if os.environ.get("DAMRU_PATCH_INSTALLED_WEBVIEW_APK") in {"1", "true", "TRUE", "yes", "YES"}:
+        try:
+            await root.ensure_installed_webview_apk_platform_patch()
+        except Exception as exc:
+            logger.warning("Installed WebView APK platform repair skipped: %s", exc)
+    else:
+        logger.info("Installed WebView APK platform repair disabled; use image bake/controlled canary")
+
+    try:
+        await root.ensure_system_webview_native_lib_patch()
+    except Exception as exc:
+        logger.warning("System WebView native lib repair skipped: %s", exc)
+
+    try:
+        await root.ensure_multitouch_stack()
+    except Exception as exc:
+        logger.warning("Multitouch stack repair skipped: %s", exc)
+
+    await root.repair_app_data_dirs()
+
+    native_preload_disabled = _env_truthy("DAMRU_DISABLE_NATIVE_PRELOAD")
+    if apply_memory and not native_preload_disabled and not configure_chrome and browser_package != "com.android.chrome":
+        try:
+            await root.apply_memory_spoof(device.device_memory)
+            renderer_targets = _webview_renderer_preload_targets()
+            await root.setup_memory_preload(
+                browser_package,
+                extra_packages=renderer_targets,
+                restart_webview_zygote=bool(renderer_targets),
+            )
+        except Exception as exc:
+            logger.warning("Native preload setup skipped for %s: %s", browser_package, exc)
+    elif apply_memory and native_preload_disabled and not configure_chrome and browser_package != "com.android.chrome":
+        logger.info("Native preload disabled for %s by DAMRU_DISABLE_NATIVE_PRELOAD", browser_package)
 
     if rotate_chrome and browser_package != "com.android.chrome":
         raise ValueError("rotate_chrome is only supported for com.android.chrome.")
@@ -214,7 +297,15 @@ async def force_device_profile(
         chrome_package = chrome.package
         if apply_memory:
             await root.apply_memory_spoof(device.device_memory)
-            await root.setup_memory_preload(chrome.package)
+            if chrome.package == WEBVIEW_SHELL_PACKAGE:
+                renderer_targets = _webview_renderer_preload_targets()
+                await root.setup_memory_preload(
+                    chrome.package,
+                    extra_packages=renderer_targets,
+                    restart_webview_zygote=bool(renderer_targets),
+                )
+            else:
+                await root.setup_memory_preload(chrome.package)
         await chrome.force_stop()
         if rotate_chrome:
             chrome_version = await _maybe_rotate_chrome(serial, chrome, version=chrome_version)
@@ -230,7 +321,10 @@ async def force_device_profile(
                 await chrome.clear_all_data()
         accept_lang = build_accept_language(profile.locale)
         await asyncio.gather(
-            chrome.write_command_line(profile.chrome_flags),
+            chrome.write_command_line(
+                profile.chrome_flags,
+                user_agent=_build_chrome_user_agent(device, chrome_version),
+            ),
             chrome.patch_preferences(profile.locale, accept_lang),
         )
         await _configure_webview_shell(

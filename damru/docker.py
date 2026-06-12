@@ -24,6 +24,9 @@ import os
 import re
 import shlex
 import sys
+import tempfile
+import uuid
+import zipfile
 from pathlib import Path
 from pathlib import PureWindowsPath
 from typing import List, Optional
@@ -47,6 +50,13 @@ from .config import (
 )
 from .netfix import android_dns_repair_command, wsl_runtime_network_repair_lines
 from .utils import logger
+from .webview_native_patch import (
+    WebViewNativePatchError,
+    is_webview_native_library_entry,
+    patch_linux_armv8l_platform_string,
+    patch_linux_armv8l_platform_string_in_apk,
+    patch_x_requested_with_header_block,
+)
 
 _CHROME_APK_AUTO_SKIP_VERSIONS: set[str] = set()
 
@@ -1321,7 +1331,41 @@ chmod 755 "$target"
             return None
         return f'{REDROID_CONTAINER_PREFIX}{index}', port
 
-    async def _replace_system_webview_apk(self, serial: str, webview_apk: Path) -> None:
+    @staticmethod
+    def _patch_local_webview_native_library(lib_path: Path) -> list[str]:
+        changed_patches: list[str] = []
+        if os.environ.get("DAMRU_ENABLE_WEBVIEW_XRW_NATIVE_PATCH") == "1":
+            try:
+                if patch_x_requested_with_header_block(lib_path):
+                    changed_patches.append("x-requested-with")
+            except WebViewNativePatchError as exc:
+                logger.warning("WebView X-Requested-With native patch skipped for %s: %s", lib_path, exc)
+        try:
+            if patch_linux_armv8l_platform_string(lib_path):
+                changed_patches.append("platform-armv8l")
+        except WebViewNativePatchError as exc:
+            logger.warning("WebView platform native patch skipped for %s: %s", lib_path, exc)
+        return changed_patches
+
+    @staticmethod
+    def _extract_webview_native_library(apk_path: Path, output_dir: Path) -> tuple[Path, str]:
+        with zipfile.ZipFile(apk_path, "r") as zf:
+            names = [name for name in zf.namelist() if is_webview_native_library_entry(name)]
+            if not names:
+                raise WebViewNativePatchError(f"WebView native library entry not found in {apk_path}")
+            preferred = next((name for name in names if name == "lib/x86_64/libmonochrome_64.so"), names[0])
+            parts = preferred.split("/")
+            abi = parts[1] if len(parts) >= 3 and parts[0] == "lib" else "x86_64"
+            output_path = output_dir / "libmonochrome_64.so"
+            output_path.write_bytes(zf.read(preferred))
+            return output_path, abi
+
+    async def _replace_system_webview_apk(
+        self,
+        serial: str,
+        webview_apk: Path,
+        native_library_apk: Path | None = None,
+    ) -> None:
         plain = self._plain_serial(serial)
         try:
             port = int(plain.rsplit(':', 1)[1])
@@ -1347,10 +1391,58 @@ chmod 755 "$target"
             )
         name, port = target
         src = self._to_wsl_path(str(webview_apk.resolve())) if self._is_windows else str(webview_apk.resolve())
-        await self._run_cmd(
-            self._docker_cmd('cp', src, f'{name}:/system/product/app/webview/webview.apk'),
-            timeout=APK_INSTALL_TIMEOUT,
-        )
+        patched_lib: Path | None = None
+        patched_lib_abi = "x86_64"
+        native_source = native_library_apk or webview_apk
+        tmpdir_obj = tempfile.TemporaryDirectory(prefix="damru-system-webview-lib-")
+        tmpdir = Path(tmpdir_obj.name)
+        try:
+            try:
+                patched_lib, patched_lib_abi = self._extract_webview_native_library(native_source, tmpdir)
+                changed = self._patch_local_webview_native_library(patched_lib)
+                if changed:
+                    logger.info(
+                        "Prepared patched system WebView native library from %s: %s",
+                        native_source,
+                        ", ".join(changed),
+                    )
+                else:
+                    logger.info("System WebView native library already patched in %s", native_source)
+            except WebViewNativePatchError as exc:
+                logger.warning("System WebView native library extraction skipped: %s", exc)
+
+            await self._run_cmd(
+                self._docker_cmd('cp', src, f'{name}:/system/product/app/webview/webview.apk'),
+                timeout=APK_INSTALL_TIMEOUT,
+            )
+            remote_tmp_lib = "/data/local/tmp/damru-system-webview-libmonochrome_64.so"
+            if patched_lib is not None:
+                lib_src = self._to_wsl_path(str(patched_lib.resolve())) if self._is_windows else str(patched_lib.resolve())
+                await self._run_cmd(
+                    self._docker_cmd('cp', lib_src, f'{name}:{remote_tmp_lib}'),
+                    timeout=APK_INSTALL_TIMEOUT,
+                )
+                quoted_abi = shlex.quote(patched_lib_abi)
+                quoted_tmp_lib = shlex.quote(remote_tmp_lib)
+                await self._run_cmd(
+                    self._docker_cmd(
+                        'exec', name, 'sh', '-lc',
+                        (
+                            'mount -o remount,rw /system 2>/dev/null || true; '
+                            'mkdir -p /system/product/app/webview/lib/'
+                            f'{quoted_abi}; '
+                            f'cat {quoted_tmp_lib} > /system/product/app/webview/lib/{quoted_abi}/libmonochrome_64.so; '
+                            f'chown root:root /system/product/app/webview/lib/{quoted_abi}/libmonochrome_64.so; '
+                            f'chmod 0644 /system/product/app/webview/lib/{quoted_abi}/libmonochrome_64.so; '
+                            'chmod 0755 /system/product/app/webview/lib '
+                            f'/system/product/app/webview/lib/{quoted_abi}; '
+                            f'rm -f {quoted_tmp_lib}'
+                        ),
+                    ),
+                    timeout=60,
+                )
+        finally:
+            tmpdir_obj.cleanup()
         await self._run_cmd(
             self._docker_cmd(
                 'exec', name, 'sh', '-lc',
@@ -1381,6 +1473,168 @@ chmod 755 "$target"
         else:
             await self._remap_adbd_port(name, port)
         await self._wait_for_package_service(serial)
+
+    async def _patch_webview_x_requested_with_header(self, serial: str) -> None:
+        if os.environ.get("DAMRU_ENABLE_INSTALLED_WEBVIEW_NATIVE_PATCH") != "1":
+            logger.info("Installed WebView native library patch disabled by default")
+            return
+        find_command = (
+            "for f in "
+            "/data/app/*/app.vanadium.trichromelibrary_*/lib/*/libmonochrome_64.so "
+            "/data/app/*/app.vanadium.trichromelibrary_*/lib/*/libmonochrome.so "
+            "/data/app/*/com.google.android.trichromelibrary_*/lib/*/libmonochrome_64.so "
+            "/data/app/*/com.google.android.trichromelibrary_*/lib/*/libmonochrome.so "
+            "/data/app/*/*/lib/*/libmonochrome_64.so "
+            "/data/app/*/*/lib/*/libmonochrome.so; do "
+            '[ -f "$f" ] && echo "$f"; '
+            "done | sort -u"
+        )
+        root_find_command = f"su 0 sh -c {shlex.quote(find_command)}"
+        lib_paths = [
+            line.strip()
+            for line in (
+                await self._run_cmd(
+                    self._adb_cmd("shell", root_find_command, serial=serial),
+                    timeout=20,
+                    allow_failure=True,
+                )
+            ).strip().splitlines()
+            if line.strip()
+        ]
+        if not lib_paths:
+            logger.warning("WebView X-Requested-With native patch skipped: libmonochrome_64.so not found")
+        else:
+            for remote_lib in lib_paths:
+                await self._patch_one_webview_x_requested_with_library(serial, remote_lib)
+        # Do not live-mutate installed APK files under /data/app. APK-entry
+        # edits can invalidate package/signature state for static shared
+        # Trichrome libraries. The durable platform fix is to install a patched
+        # extracted native library beside the system WebView APK during image
+        # bake/replacement.
+
+    async def _patch_one_webview_x_requested_with_library(self, serial: str, remote_lib: str) -> None:
+        logger.info("Patching WebView native library in %s", remote_lib)
+        with tempfile.TemporaryDirectory(prefix="damru-webview-patch-") as tmp:
+            local_lib = Path(tmp) / "libmonochrome_64.so"
+            remote_source_tmp = f"/data/local/tmp/damru-libmonochrome-native-source-{uuid.uuid4().hex}.so"
+            quoted_lib = shlex.quote(remote_lib)
+            quoted_source_tmp = shlex.quote(remote_source_tmp)
+            copy_command = f"cat {quoted_lib} > {quoted_source_tmp}; chmod 0644 {quoted_source_tmp}"
+            try:
+                await self._run_cmd(
+                    self._adb_cmd(
+                        "shell",
+                        f"su 0 sh -c {shlex.quote(copy_command)}",
+                        serial=serial,
+                    ),
+                    timeout=60,
+                )
+                await self._run_cmd(
+                    self._adb_cmd("pull", remote_source_tmp, str(local_lib), serial=serial),
+                    timeout=APK_INSTALL_TIMEOUT,
+                )
+            finally:
+                await self._run_cmd(
+                    self._adb_cmd(
+                        "shell",
+                        f"su 0 sh -c {shlex.quote(f'rm -f {quoted_source_tmp}')}",
+                        serial=serial,
+                    ),
+                    timeout=10,
+                    allow_failure=True,
+                )
+            changed_patches: list[str] = []
+            if os.environ.get("DAMRU_ENABLE_WEBVIEW_XRW_NATIVE_PATCH") == "1":
+                try:
+                    if patch_x_requested_with_header_block(local_lib):
+                        changed_patches.append("x-requested-with")
+                except WebViewNativePatchError as exc:
+                    logger.warning("WebView X-Requested-With native patch skipped for %s: %s", remote_lib, exc)
+            try:
+                if patch_linux_armv8l_platform_string(local_lib):
+                    changed_patches.append("platform-armv8l")
+            except WebViewNativePatchError as exc:
+                logger.warning("WebView platform native patch skipped for %s: %s", remote_lib, exc)
+            if not changed_patches:
+                logger.info("WebView native patches already present in %s", remote_lib)
+                return
+            remote_tmp = "/data/local/tmp/damru-libmonochrome-native-patched.so"
+            await self._run_cmd(
+                self._adb_cmd("push", str(local_lib), remote_tmp, serial=serial),
+                timeout=APK_INSTALL_TIMEOUT,
+            )
+            quoted_tmp = shlex.quote(remote_tmp)
+            await self._run_cmd(
+                self._adb_cmd(
+                    "shell",
+                    "su 0 sh -c "
+                    + shlex.quote(
+                        f"owner=$(stat -c '%u:%g' {quoted_lib}); "
+                        f"mode=$(stat -c '%a' {quoted_lib}); "
+                        f"cat {quoted_tmp} > {quoted_lib}; "
+                        f"chown \"$owner\" {quoted_lib}; "
+                        f"chmod \"$mode\" {quoted_lib}; "
+                        f"rm -f {quoted_tmp}; "
+                        "am force-stop com.android.webview 2>/dev/null || true; "
+                        "am force-stop com.android.chrome 2>/dev/null || true; "
+                        "am force-stop com.android.browser 2>/dev/null || true; "
+                        "am force-stop org.chromium.webview_shell 2>/dev/null || true; "
+                        "killall webview_zygote 2>/dev/null || true"
+                    ),
+                    serial=serial,
+                ),
+                timeout=60,
+            )
+        logger.info("WebView native patches applied to %s: %s", remote_lib, ", ".join(changed_patches))
+
+    async def _patch_one_webview_platform_apk(self, serial: str, remote_apk: str) -> None:
+        logger.info("Patching WebView APK native library entry in %s", remote_apk)
+        with tempfile.TemporaryDirectory(prefix="damru-webview-apk-patch-") as tmp:
+            local_apk = Path(tmp) / "base.apk"
+            await self._run_cmd(
+                self._adb_cmd("pull", remote_apk, str(local_apk), serial=serial),
+                timeout=APK_INSTALL_TIMEOUT,
+            )
+            try:
+                changed = patch_linux_armv8l_platform_string_in_apk(local_apk)
+            except WebViewNativePatchError as exc:
+                logger.warning("WebView APK platform native patch skipped for %s: %s", remote_apk, exc)
+                return
+            if not changed:
+                logger.info("WebView APK platform native patch already present in %s", remote_apk)
+                return
+            remote_tmp = "/data/local/tmp/damru-trichrome-platform-patched.apk"
+            await self._run_cmd(
+                self._adb_cmd("push", str(local_apk), remote_tmp, serial=serial),
+                timeout=APK_INSTALL_TIMEOUT,
+            )
+            quoted_apk = shlex.quote(remote_apk)
+            quoted_tmp = shlex.quote(remote_tmp)
+            await self._run_cmd(
+                self._adb_cmd(
+                    "shell",
+                    "su",
+                    "0",
+                    "sh",
+                    "-lc",
+                    (
+                        f"owner=$(stat -c '%u:%g' {quoted_apk}); "
+                        f"mode=$(stat -c '%a' {quoted_apk}); "
+                        f"cat {quoted_tmp} > {quoted_apk}; "
+                        f"chown \"$owner\" {quoted_apk}; "
+                        f"chmod \"$mode\" {quoted_apk}; "
+                        f"rm -f {quoted_tmp}; "
+                        "am force-stop com.android.webview 2>/dev/null || true; "
+                        "am force-stop com.android.chrome 2>/dev/null || true; "
+                        "am force-stop com.android.browser 2>/dev/null || true; "
+                        "am force-stop org.chromium.webview_shell 2>/dev/null || true; "
+                        "killall webview_zygote 2>/dev/null || true"
+                    ),
+                    serial=serial,
+                ),
+                timeout=60,
+            )
+        logger.info("WebView APK platform native patch applied to %s", remote_apk)
 
     async def install_chrome(self, serial: str, apk_path: str) -> None:
         """Install Chrome on a container via ADB.
@@ -1418,6 +1672,7 @@ chmod 755 "$target"
                 if candidate.exists():
                     vanadium_library = candidate
                     break
+            trichrome = p / "google_trichrome_library.apk"
             if vanadium_library is not None:
                 logger.info('Installing matching WebView TrichromeLibrary on %s...', serial)
                 await self._run_cmd(
@@ -1425,16 +1680,21 @@ chmod 755 "$target"
                     timeout=APK_INSTALL_TIMEOUT,
                 )
             logger.info('Replacing system WebView on %s from %s...', serial, matching_webview)
-            await self._replace_system_webview_apk(serial, matching_webview)
+            await self._replace_system_webview_apk(
+                serial,
+                matching_webview,
+                native_library_apk=vanadium_library or (trichrome if trichrome.exists() else None),
+            )
 
             # Install TrichromeLibrary first if present (Chrome needs it)
-            trichrome = p / "google_trichrome_library.apk"
             if trichrome.exists():
                 logger.info("Installing TrichromeLibrary on %s...", serial)
                 await self._run_cmd(
                     self._adb_cmd("install", "-r", "-d", str(trichrome), serial=serial),
                     timeout=APK_INSTALL_TIMEOUT,
                 )
+            if trichrome.exists() or vanadium_library is not None:
+                await self._patch_webview_x_requested_with_header(serial)
 
             # Install Chrome split APKs (exclude trichrome library)
             chrome_apks = [
@@ -1458,6 +1718,12 @@ chmod 755 "$target"
                         f'Chrome {installed_chrome}, WebView {installed_webview}. '
                         f'Use a matching WebView APK for {p.name}. Provider: {provider_detail}'
                     )
+            if trichrome.exists() or vanadium_library is not None:
+                # Chrome/WebView split installs can create or replace extracted
+                # Trichrome native-library paths after the first library patch.
+                # Reapply here so the active /data/app provider libs carry the
+                # same native XRW patch as the baked system WebView lib.
+                await self._patch_webview_x_requested_with_header(serial)
             logger.info("Chrome installed on %s (%d split APKs)", serial, len(chrome_apks))
         else:
             await self._run_cmd(
@@ -1794,15 +2060,16 @@ chmod 755 "$target"
           2.  Install Chrome + TrichromeLibrary APKs
           3.  Install eSpeak-NG (100+ offline TTS voices)
           4.  Push resetprop binary
-          5.  Install extra fonts to /system/fonts/
-          6.  Configure eSpeak as default TTS engine
-          7.  Backup original vulkan.pastel.so for GPU patching
-          8.  Apply audio 48kHz fix
-          9.  Set ro.debuggable=1 in build.prop (persistent)
-          10. Launch Chrome → dismiss FRE → create Preferences
-          11. Patch universal Preferences (DoH, WebRTC, DNS, etc.)
-          12. docker commit → custom image
-          13. Remove temp container
+          5.  Install native preload assets for optional runtime hooks
+          6.  Install extra fonts to /system/fonts/
+          7.  Configure eSpeak as default TTS engine
+          8.  Backup original vulkan.pastel.so for GPU patching
+          9.  Apply audio 48kHz fix
+          10. Set ro.debuggable=1 in build.prop (persistent)
+          11. Launch Chrome → dismiss FRE → create Preferences
+          12. Patch universal Preferences (DoH, WebRTC, DNS, etc.)
+          13. docker commit → custom image
+          14. Remove temp container
 
         Args:
             chrome_apk: Path to Chrome APK or split-APK directory.
@@ -1821,7 +2088,12 @@ chmod 755 "$target"
         port = 5699  # Use a high port to avoid conflicts
 
         logger.info("=== BAKING DAMRU IMAGE ===")
-        base_image = REDROID_BASE_IMAGE if image_name == REDROID_IMAGE else REDROID_IMAGE
+        base_image = os.environ.get("DAMRU_BAKE_BASE_IMAGE", "").strip()
+        if not base_image:
+            if os.environ.get("DAMRU_BAKE_FROM_LAUNCH_IMAGE") == "1" and image_name != REDROID_IMAGE:
+                base_image = REDROID_IMAGE
+            else:
+                base_image = REDROID_BASE_IMAGE
         logger.info("Base image: %s", base_image)
         logger.info("Target image: %s", image_name)
 
@@ -1881,6 +2153,24 @@ chmod 755 "$target"
                 logger.info("Installing Chrome from %s...", apk_path)
                 await self.install_chrome(serial, apk_path)
 
+            logger.info("Baking WebView native platform and touch repairs...")
+            try:
+                await root.ensure_installed_webview_apk_platform_patch()
+            except Exception as exc:
+                logger.warning("Installed WebView APK platform bake repair skipped: %s", exc)
+            try:
+                await root.ensure_system_webview_native_lib_patch()
+            except Exception as exc:
+                logger.warning("System WebView native lib bake repair skipped: %s", exc)
+            try:
+                await self._patch_webview_x_requested_with_header(serial)
+            except Exception as exc:
+                logger.warning("Installed WebView native XRW bake repair skipped: %s", exc)
+            try:
+                await root.ensure_multitouch_stack()
+            except Exception as exc:
+                logger.warning("Multitouch bake repair skipped: %s", exc)
+
             # Step 3: Install local TTS engines/voices
             logger.info("Installing local TTS engines...")
             await root.ensure_speech_voices()
@@ -1889,11 +2179,15 @@ chmod 755 "$target"
             logger.info("Pushing resetprop binary...")
             await root._ensure_resetprop()
 
-            # Step 5: Install extra fonts
+            # Step 5: Install native preload assets but do not activate wrap.*.
+            logger.info("Installing native preload assets...")
+            await root.install_native_preload_assets()
+
+            # Step 6: Install extra fonts
             logger.info("Installing extra fonts...")
             await root.install_extra_fonts()
 
-            # Step 6: Configure eSpeak as default TTS
+            # Step 7: Configure eSpeak as default TTS
             logger.info("Configuring TTS engine...")
             espeak_pkg = "com.reecedunn.espeak"
             for cmd in [
@@ -1905,7 +2199,7 @@ chmod 755 "$target"
             ]:
                 await adb.shell(cmd, allow_failure=True)
 
-            # Step 7: Backup original vulkan.pastel.so
+            # Step 8: Backup original vulkan.pastel.so
             vulkan_so = "/vendor/lib64/hw/vulkan.pastel.so"
             backup_so = "/data/local/tmp/damru_vk_pastel_orig.so"
             vk_exists = "OK" in await adb.shell(
@@ -1915,10 +2209,10 @@ chmod 755 "$target"
                 await adb.shell_root(f"cp {vulkan_so} {backup_so}")
                 logger.info("Backed up original vulkan.pastel.so")
 
-            # Step 8: Apply audio 48kHz fix
+            # Step 9: Apply audio 48kHz fix
             await root.apply_audio_48khz()
 
-            # Step 9: Set ro.debuggable=1 persistently in build.prop
+            # Step 10: Set ro.debuggable=1 persistently in build.prop
             # (resetprop is in-memory only — build.prop survives docker commit)
             logger.info("Setting ro.debuggable=1 in build.prop (persistent)...")
             await adb.shell(
@@ -1942,7 +2236,7 @@ chmod 755 "$target"
                 "su 0 mount -o remount,ro /system 2>/dev/null", allow_failure=True,
             )
 
-            # Step 10: Launch Chrome → dismiss FRE → create Preferences
+            # Step 11: Launch Chrome → dismiss FRE → create Preferences
             # This makes has_preferences() = True on every new container,
             # so ALL sessions take the warm (fast) path. No cold start ever.
             logger.info("Pre-launching Chrome to dismiss FRE...")
@@ -1954,7 +2248,7 @@ chmod 755 "$target"
             await chrome.force_stop()
             await asyncio.sleep(1)
 
-            # Step 11: Patch universal Preferences (DoH, WebRTC, privacy)
+            # Step 12: Patch universal Preferences (DoH, WebRTC, privacy)
             # Per-session locale will overwrite intl.selected_languages later.
             logger.info("Patching universal Chrome Preferences...")
             prefs_path = f"/data/data/{chrome.package}/app_chrome/Default/Preferences"
@@ -1981,6 +2275,7 @@ chmod 755 "$target"
             })
             # Default language (overwritten per-session by patch_preferences)
             prefs.setdefault("intl", {})["selected_languages"] = "en-US,en"
+            prefs.setdefault("intl", {})["accept_languages"] = "en-US,en"
 
             import base64 as _b64
             patched_json = _json.dumps(prefs, separators=(",", ":"))
@@ -2035,7 +2330,7 @@ chmod 755 "$target"
             await adb.shell("am force-stop org.chromium.webview_shell", allow_failure=True)
             await asyncio.sleep(1)
 
-            # Step 12: docker commit → custom image
+            # Step 13: docker commit → custom image
             logger.info("Committing image as %s (this may take a minute)...", image_name)
             await self._run_cmd(
                 self._docker_cmd("commit", temp_name, image_name),
@@ -2046,7 +2341,7 @@ chmod 755 "$target"
             logger.info("Use in config.py: REDROID_IMAGE = \"%s\"", image_name)
 
         finally:
-            # Step 13: Cleanup temp container
+            # Step 14: Cleanup temp container
             await self._run_cmd(
                 self._docker_cmd("rm", "-f", temp_name),
                 timeout=15, allow_failure=True,
