@@ -65,6 +65,9 @@ _SENSOR_MOCK_BIN = "android.hardware.sensors@2.1-service.mock"
 _REDROID_STREAM_BOOT_ARG = "androidboot.use_redroid_stream=1"
 _INPUT_NODE_FIX_SCRIPT = "/system/bin/damru-input-node-fix.sh"
 _INPUT_NODE_FIX_RC = "/system/etc/init/damru-input-node-fix.rc"
+_EXTRA_CA_FIX_SCRIPT = "/system/bin/damru-extra-ca-fix.sh"
+_EXTRA_CA_FIX_RC = "/system/etc/init/damru-extra-ca-fix.rc"
+_EXTRA_CA_MANIFEST = "/system/etc/security/cacerts/damru-extra-ca.list"
 
 
 def _kernel_config_enabled(config_text: str, option: str) -> Optional[bool]:
@@ -1290,7 +1293,7 @@ chmod 755 "$target"
             logger.info("Using host networking with adbd remapped to port %d", port)
             run_args.extend(["--network", "host"])
         else:
-            run_args.extend(["-p", f"{port}:5555"])
+            run_args.extend(["-p", f"127.0.0.1:{port}:5555"])
             if pid_shift_wrapper:
                 run_args.extend([
                     "-e", f"DAMRU_PID_SHIFT_COUNT={96 + (index * 64)}",
@@ -1955,6 +1958,166 @@ chmod 755 "$target"
             await self._remap_adbd_port(name, port)
         await self._wait_for_package_service(serial)
 
+    async def _install_extra_system_ca_boot_repair(self, name: str) -> None:
+        """Install boot-time repair that mirrors extra CAs into Conscrypt APEX."""
+        root = Path(__file__).resolve().parent.parent
+        ca_dir = root / "native" / "ca"
+        script = ca_dir / "damru-extra-ca-fix.sh"
+        rc_file = ca_dir / "damru-extra-ca-fix.rc"
+        if not script.exists() or not rc_file.exists():
+            raise DamruError(f"Native extra-CA repair assets missing under {ca_dir}")
+
+        script_src = self._to_wsl_path(str(script)) if self._is_windows else str(script)
+        rc_src = self._to_wsl_path(str(rc_file)) if self._is_windows else str(rc_file)
+        await self._run_cmd(
+            self._docker_cmd("exec", name, "mkdir", "-p", "/system/bin", "/system/etc/init"),
+            timeout=20,
+        )
+        await self._run_cmd(self._docker_cmd("cp", script_src, f"{name}:{_EXTRA_CA_FIX_SCRIPT}"), timeout=60)
+        await self._run_cmd(self._docker_cmd("cp", rc_src, f"{name}:{_EXTRA_CA_FIX_RC}"), timeout=60)
+        await self._run_cmd(
+            self._docker_cmd(
+                "exec",
+                name,
+                "sh",
+                "-lc",
+                f"chmod 755 {_EXTRA_CA_FIX_SCRIPT}; chmod 644 {_EXTRA_CA_FIX_RC}",
+            ),
+            timeout=20,
+        )
+
+    @staticmethod
+    def _split_extra_system_ca_values(values: Optional[str | List[str]]) -> list[str]:
+        if values is None:
+            return []
+        raw_values = [values] if isinstance(values, str) else list(values)
+        paths: list[str] = []
+        for raw in raw_values:
+            if not raw:
+                continue
+            for part in re.split(r"[,\n]", raw):
+                value = part.strip()
+                if value:
+                    paths.append(value)
+        return paths
+
+    @staticmethod
+    def _resolve_extra_system_ca_paths(values: Optional[str | List[str]]) -> list[Path]:
+        paths: list[Path] = []
+        seen: set[str] = set()
+        for value in RedroidManager._split_extra_system_ca_values(values):
+            expanded = os.path.expandvars(os.path.expanduser(value))
+            path = Path(expanded)
+            if not path.is_file():
+                raise DamruError(f"Extra system CA certificate not found: {value}")
+            resolved = path.resolve()
+            key = str(resolved)
+            if key not in seen:
+                seen.add(key)
+                paths.append(resolved)
+        return paths
+
+    def _openssl_cmd(self, *args: str) -> List[str]:
+        if self._is_windows:
+            return ["wsl", "-d", self._wsl_distro, "--", "openssl", *args]
+        return ["openssl", *args]
+
+    async def _android_ca_subject_hash(self, cert_path: Path) -> str:
+        cert_arg = self._to_wsl_path(str(cert_path)) if self._is_windows else str(cert_path)
+        out = await self._run_cmd(
+            self._openssl_cmd("x509", "-subject_hash_old", "-noout", "-in", cert_arg),
+            timeout=10,
+        )
+        cert_hash = next((line.strip() for line in out.splitlines() if line.strip()), "")
+        if not re.fullmatch(r"[0-9a-fA-F]{8}", cert_hash):
+            raise DamruError(
+                f"Could not compute Android CA subject hash for {cert_path}: {out!r}"
+            )
+        return cert_hash.lower()
+
+    async def _write_extra_system_ca_manifest(
+        self,
+        container_name: str,
+        filenames: list[str],
+    ) -> None:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as fp:
+            manifest_path = Path(fp.name)
+            fp.write("".join(f"{name}\n" for name in filenames))
+        try:
+            src = self._to_wsl_path(str(manifest_path)) if self._is_windows else str(manifest_path)
+            await self._run_cmd(
+                self._docker_cmd("cp", src, f"{container_name}:{_EXTRA_CA_MANIFEST}"),
+                timeout=30,
+            )
+        finally:
+            with suppress(FileNotFoundError):
+                manifest_path.unlink()
+        await self._run_cmd(
+            self._docker_cmd(
+                "exec",
+                container_name,
+                "sh",
+                "-lc",
+                f"chown root:root {_EXTRA_CA_MANIFEST}; chmod 0644 {_EXTRA_CA_MANIFEST}",
+            ),
+            timeout=20,
+        )
+
+    async def _install_extra_system_ca_certificates(
+        self,
+        container_name: str,
+        ca_cert_paths: list[Path],
+    ) -> list[str]:
+        installed: list[str] = []
+        if not ca_cert_paths:
+            return installed
+
+        for cert_path in ca_cert_paths:
+            cert_hash = await self._android_ca_subject_hash(cert_path)
+            filename = f"{cert_hash}.0"
+            remote_tmp = f"/data/local/tmp/damru-extra-system-ca-{filename}"
+            src = self._to_wsl_path(str(cert_path)) if self._is_windows else str(cert_path)
+            await self._run_cmd(
+                self._docker_cmd("cp", src, f"{container_name}:{remote_tmp}"),
+                timeout=30,
+            )
+
+            quoted_tmp = shlex.quote(remote_tmp)
+            system_target = shlex.quote(f"/system/etc/security/cacerts/{filename}")
+            apex_target = shlex.quote(f"/apex/com.android.conscrypt/cacerts/{filename}")
+            install_script = (
+                "set -e; "
+                "mount -o remount,rw /system 2>/dev/null || true; "
+                "mount -o remount,rw /apex/com.android.conscrypt 2>/dev/null || "
+                "mount -o remount,rw /apex 2>/dev/null || true; "
+                "mkdir -p /system/etc/security/cacerts; "
+                f"cat {quoted_tmp} > {system_target}; "
+                f"chown root:root {system_target}; chmod 0644 {system_target}; "
+                "if [ -d /apex/com.android.conscrypt/cacerts ]; then "
+                f"cat {quoted_tmp} > {apex_target}; "
+                f"chown root:root {apex_target}; chmod 0644 {apex_target}; "
+                f"test -f {apex_target}; "
+                "fi; "
+                f"rm -f {quoted_tmp}; "
+                f"test -f {system_target}"
+            )
+            await self._run_cmd(
+                self._docker_cmd("exec", container_name, "sh", "-lc", install_script),
+                timeout=30,
+            )
+            installed.append(filename)
+            logger.info(
+                "Installed extra Android system CA %s from %s into baked image",
+                filename,
+                cert_path,
+            )
+
+        if installed:
+            await self._write_extra_system_ca_manifest(container_name, installed)
+            await self._install_extra_system_ca_boot_repair(container_name)
+
+        return installed
+
     async def _patch_webview_x_requested_with_header(self, serial: str) -> None:
         if (
             os.environ.get("DAMRU_ENABLE_INSTALLED_WEBVIEW_NATIVE_PATCH") != "1"
@@ -2576,6 +2739,7 @@ chmod 755 "$target"
         self,
         chrome_apk: Optional[str] = None,
         image_name: str = "damru-redroid:latest",
+        extra_system_ca_certs: Optional[str | List[str]] = None,
     ) -> str:
         """Pre-bake a Docker image with EVERYTHING pre-installed and pre-configured.
 
@@ -2591,20 +2755,24 @@ chmod 755 "$target"
           2.  Install Chrome + TrichromeLibrary APKs
           3.  Install eSpeak-NG (100+ offline TTS voices)
           4.  Push resetprop binary
-          5.  Install native preload assets for optional runtime hooks
-          6.  Install extra fonts to /system/fonts/
-          7.  Configure eSpeak as default TTS engine
-          8.  Backup original vulkan.pastel.so for GPU patching
-          9.  Apply audio 48kHz fix
-          10. Set production-like security props in build.prop (persistent)
-          11. Launch Chrome → dismiss FRE → create Preferences
-          12. Patch universal Preferences (DoH, WebRTC, DNS, etc.)
-          13. docker commit → custom image
-          14. Remove temp container
+          5.  Optionally install extra Android system CA certificates
+          6.  Install native preload assets for optional runtime hooks
+          7.  Install extra fonts to /system/fonts/
+          8.  Configure eSpeak as default TTS engine
+          9.  Backup original vulkan.pastel.so for GPU patching
+          10. Apply audio 48kHz fix
+          11. Set production-like security props in build.prop (persistent)
+          12. Launch Chrome → dismiss FRE → create Preferences
+          13. Patch universal Preferences (DoH, WebRTC, DNS, etc.)
+          14. docker commit → custom image
+          15. Remove temp container
 
         Args:
             chrome_apk: Path to Chrome APK or split-APK directory.
             image_name: Name for the baked image (default: damru-redroid:latest).
+            extra_system_ca_certs: Optional PEM certificate path(s) to install into
+                Android's system CA stores. Also configurable with
+                DAMRU_EXTRA_SYSTEM_CA_CERTS or DAMRU_MITM_CA_CERT.
 
         Returns:
             The image name/tag that was created.
@@ -2628,6 +2796,19 @@ chmod 755 "$target"
         logger.info("Base image: %s", base_image)
         logger.info("Target image: %s", image_name)
 
+        extra_ca_values = self._split_extra_system_ca_values(extra_system_ca_certs)
+        if not extra_ca_values:
+            extra_ca_values = self._split_extra_system_ca_values([
+                os.environ.get("DAMRU_EXTRA_SYSTEM_CA_CERTS", ""),
+                os.environ.get("DAMRU_MITM_CA_CERT", ""),
+            ])
+        extra_ca_paths = self._resolve_extra_system_ca_paths(extra_ca_values)
+        if extra_ca_paths:
+            logger.info(
+                "Extra Android system CA certificates requested: %s",
+                ", ".join(str(path) for path in extra_ca_paths),
+            )
+
         # Step 1: Start temp container
         await self._ensure_binderfs()
         await self.ensure_image(base_image)
@@ -2641,7 +2822,7 @@ chmod 755 "$target"
                 "--name", temp_name,
                 "--privileged",
                 "-v", "/dev/binderfs:/dev/binderfs",
-                "-p", f"{port}:5555",
+                "-p", f"127.0.0.1:{port}:5555",
                 base_image,
                 "androidboot.use_memfd=true",
                 _REDROID_STREAM_BOOT_ARG,
@@ -2723,23 +2904,35 @@ chmod 755 "$target"
             except Exception as exc:
                 logger.warning("Multitouch bake repair skipped: %s", exc)
 
-            # Step 3: Install local TTS engines/voices
+            # Step 5: Optional deep/system CA install for controlled native capture probes.
+            if extra_ca_paths:
+                logger.info("Installing extra Android system CA certificates...")
+                installed_ca_files = await self._install_extra_system_ca_certificates(
+                    temp_name,
+                    extra_ca_paths,
+                )
+                logger.info(
+                    "Extra Android system CA certificates baked: %s",
+                    ", ".join(installed_ca_files),
+                )
+
+            # Step 6: Install local TTS engines/voices
             logger.info("Installing local TTS engines...")
             await root.ensure_speech_voices()
 
-            # Step 4: Push resetprop binary
+            # Step 7: Push resetprop binary
             logger.info("Pushing resetprop binary...")
             await root._ensure_resetprop()
 
-            # Step 5: Install native preload assets but do not activate wrap.*.
+            # Step 8: Install native preload assets but do not activate wrap.*.
             logger.info("Installing native preload assets...")
             await root.install_native_preload_assets()
 
-            # Step 6: Install extra fonts
+            # Step 9: Install extra fonts
             logger.info("Installing extra fonts...")
             await root.install_extra_fonts()
 
-            # Step 7: Configure eSpeak as default TTS
+            # Step 10: Configure eSpeak as default TTS
             logger.info("Configuring TTS engine...")
             espeak_pkg = "com.reecedunn.espeak"
             for cmd in [
@@ -2751,7 +2944,7 @@ chmod 755 "$target"
             ]:
                 await adb.shell(cmd, allow_failure=True)
 
-            # Step 8: Backup original vulkan.pastel.so
+            # Step 11: Backup original vulkan.pastel.so
             vulkan_so = "/vendor/lib64/hw/vulkan.pastel.so"
             backup_so = "/data/local/tmp/damru_vk_pastel_orig.so"
             vk_exists = "OK" in await adb.shell(
@@ -2761,10 +2954,10 @@ chmod 755 "$target"
                 await adb.shell_root(f"cp {vulkan_so} {backup_so}")
                 logger.info("Backed up original vulkan.pastel.so")
 
-            # Step 9: Apply audio 48kHz fix
+            # Step 12: Apply audio 48kHz fix
             await root.apply_audio_48khz()
 
-            # Step 10: Keep fresh workers root-manageable during warmup.
+            # Step 13: Keep fresh workers root-manageable during warmup.
             # Runtime profile application hardens these props again before
             # browser navigation. This image-level baseline is only the boot
             # state needed for native OS/WebView repairs.
@@ -2792,7 +2985,7 @@ chmod 755 "$target"
                 "su 0 mount -o remount,ro /system 2>/dev/null", allow_failure=True,
             )
 
-            # Step 11: Launch Chrome → dismiss FRE → create Preferences
+            # Step 14: Launch Chrome → dismiss FRE → create Preferences
             # This makes has_preferences() = True on every new container,
             # so ALL sessions take the warm (fast) path. No cold start ever.
             logger.info("Pre-launching Chrome to dismiss FRE...")
@@ -2804,7 +2997,7 @@ chmod 755 "$target"
             await chrome.force_stop()
             await asyncio.sleep(1)
 
-            # Step 12: Patch universal Preferences (DoH, WebRTC, privacy)
+            # Step 15: Patch universal Preferences (DoH, WebRTC, privacy)
             # Per-session locale will overwrite intl.selected_languages later.
             logger.info("Patching universal Chrome Preferences...")
             prefs_path = f"/data/data/{chrome.package}/app_chrome/Default/Preferences"
@@ -2906,7 +3099,7 @@ chmod 755 "$target"
                 except Exception:
                     pass
 
-            # Step 13: docker commit → custom image
+            # Step 16: docker commit → custom image
             logger.info("Committing image as %s (this may take a minute)...", image_name)
             await self._run_cmd(
                 self._docker_cmd("commit", temp_name, image_name),
@@ -2917,7 +3110,7 @@ chmod 755 "$target"
             logger.info("Use in config.py: REDROID_IMAGE = \"%s\"", image_name)
 
         finally:
-            # Step 14: Cleanup temp container
+            # Step 17: Cleanup temp container
             await self._run_cmd(
                 self._docker_cmd("rm", "-f", temp_name),
                 timeout=15, allow_failure=True,

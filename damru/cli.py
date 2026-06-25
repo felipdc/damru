@@ -1891,6 +1891,7 @@ def _bake_image(args: argparse.Namespace) -> int:
         await RedroidManager(wsl_distro=args.wsl_distro).bake_image(
             chrome_apk=args.chrome_apk,
             image_name=args.image,
+            extra_system_ca_certs=args.extra_system_ca,
         )
 
     asyncio.run(_run_bake())
@@ -2475,8 +2476,9 @@ def _android_proxy_host(serial: str) -> str:
 def _ensure_proxy_bridge(serial: str, upstream: str) -> str:
     from .proxy_runtime import ensure_proxy_bridge
 
-    port = ensure_proxy_bridge(upstream)
-    return f"{_android_proxy_host(serial)}:{port}"
+    host = _android_proxy_host(serial)
+    port = ensure_proxy_bridge(upstream, listen_host=host)
+    return f"{host}:{port}"
 
 def _apply_webrtc_block_sync(serial: str, chrome_package: str = "com.android.chrome") -> None:
     async def _run_block() -> None:
@@ -3051,6 +3053,14 @@ def build_parser() -> argparse.ArgumentParser:
     bake = sub.add_parser("bake-image", help="bake a warm Redroid Docker image inside Linux/WSL")
     bake.add_argument("--chrome-apk", default=None, help="APK file or split-APK directory")
     bake.add_argument("--image", default="damru-redroid:latest", help="target Docker image tag")
+    bake.add_argument(
+        "--extra-system-ca",
+        "--mitm-ca-cert",
+        dest="extra_system_ca",
+        action="append",
+        default=None,
+        help="PEM CA certificate to bake into Android system CA stores; repeatable",
+    )
     bake.add_argument("--wsl-distro", default=None, help="WSL distro to use on Windows")
     bake.set_defaults(func=_bake_image)
 

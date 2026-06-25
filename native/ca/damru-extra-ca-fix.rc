@@ -1,0 +1,12 @@
+on post-fs-data
+    start damru-extra-ca-fix
+
+on property:sys.boot_completed=1
+    start damru-extra-ca-fix
+
+service damru-extra-ca-fix /system/bin/damru-extra-ca-fix.sh 45
+    class core
+    user root
+    group root
+    oneshot
+    disabled

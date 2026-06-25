@@ -2,7 +2,7 @@ import subprocess
 import types
 
 import damru.cli as cli
-from damru.proxy_runtime import android_proxy_host_from_route, proxy_bridge_upstream
+from damru.proxy_runtime import android_proxy_host_from_route, proxy_bridge_upstream, resolve_android_proxy
 from damru.ui.server import build_command
 
 
@@ -117,6 +117,28 @@ def test_socks_proxy_uses_bridge_without_port_guessing():
 
 def test_proxy_runtime_derives_docker_gateway_from_android_route():
     assert android_proxy_host_from_route("172.17.0.0/16 dev eth0 proto kernel scope link src 172.17.0.2") == "172.17.0.1"
+
+
+def test_proxy_runtime_falls_back_to_docker_gateway_not_loopback():
+    assert android_proxy_host_from_route("") == "172.17.0.1"
+
+
+def test_resolve_android_proxy_binds_bridge_to_android_reachable_host(monkeypatch):
+    calls = []
+
+    def fake_bridge(upstream: str, *, listen_host: str = "127.0.0.1") -> int:
+        calls.append((upstream, listen_host))
+        return 19000
+
+    monkeypatch.setattr("damru.proxy_runtime.ensure_proxy_bridge", fake_bridge)
+
+    resolved = resolve_android_proxy(
+        "http://user:pass@proxy.example:10000",
+        route_text="172.17.0.0/16 dev eth0 proto kernel scope link src 172.17.0.2",
+    )
+
+    assert resolved == "172.17.0.1:19000"
+    assert calls == [("http://user:pass@proxy.example:10000", "172.17.0.1")]
 
 
 def test_stealth_open_url_keeps_session_alive_through_native_open(monkeypatch):

@@ -171,6 +171,7 @@ async def test_force_device_profile_applies_named_profile() -> None:
     flag_call = next(call for call in FakeChromeManager.calls if call[0] == "chrome.flags")
     assert any("Chrome/148.0.7778.217" in flag for flag in flag_call[1])
     assert not any("Chrome/..." in flag for flag in flag_call[1])
+    assert not any("WebRtcHideLocalIpsWithMdns" in flag for flag in flag_call[1])
     assert ("chrome.prefs", "pt-BR", "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7") in FakeChromeManager.calls
     shell_commands = [call[1] for call in FakeADB.calls if call[0] == "adb.shell"]
     assert "wm size 720x1600" in shell_commands

@@ -7,6 +7,7 @@ deterministic regardless of the host running the tests.
 """
 import asyncio
 import base64
+import inspect
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -100,6 +101,84 @@ def test_target_chrome_version_is_none_for_single_apk(tmp_path):
     assert RedroidManager()._target_chrome_version_from_apk_path(str(apk)) is None
 
 
+def test_extra_system_ca_paths_split_and_dedupe(tmp_path):
+    first = tmp_path / "first.pem"
+    second = tmp_path / "second.pem"
+    first.write_text("first")
+    second.write_text("second")
+
+    paths = RedroidManager._resolve_extra_system_ca_paths([
+        f" {first} , {second} ",
+        str(first),
+        "",
+    ])
+
+    assert paths == [first.resolve(), second.resolve()]
+
+
+def test_extra_system_ca_path_must_exist(tmp_path):
+    missing = tmp_path / "missing.pem"
+
+    with pytest.raises(DamruError, match="Extra system CA certificate not found"):
+        RedroidManager._resolve_extra_system_ca_paths(str(missing))
+
+
+async def test_install_extra_system_ca_certificates_writes_system_and_apex(tmp_path):
+    cert = tmp_path / "mitmproxy-ca-cert.pem"
+    cert.write_text("certificate")
+    calls: list[list[str]] = []
+
+    async def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[:2] == ["openssl", "x509"]:
+            return "c8750f0d\n"
+        return ""
+
+    mgr = RedroidManager()
+    mgr._is_windows = False
+    mgr._run_cmd = AsyncMock(side_effect=fake_run)
+
+    installed = await mgr._install_extra_system_ca_certificates(
+        "damru-bake-temp",
+        [cert.resolve()],
+    )
+
+    assert installed == ["c8750f0d.0"]
+    assert [
+        "docker",
+        "cp",
+        str(cert.resolve()),
+        "damru-bake-temp:/data/local/tmp/damru-extra-system-ca-c8750f0d.0",
+    ] in calls
+    exec_cmd = next(cmd for cmd in calls if cmd[:4] == ["docker", "exec", "damru-bake-temp", "sh"])
+    script = exec_cmd[-1]
+    assert "/system/etc/security/cacerts/c8750f0d.0" in script
+    assert "/apex/com.android.conscrypt/cacerts/c8750f0d.0" in script
+    assert any(
+        cmd[:2] == ["docker", "cp"]
+        and cmd[-1] == "damru-bake-temp:/system/etc/security/cacerts/damru-extra-ca.list"
+        for cmd in calls
+    )
+    assert any(
+        cmd[:2] == ["docker", "cp"]
+        and cmd[-1] == "damru-bake-temp:/system/bin/damru-extra-ca-fix.sh"
+        for cmd in calls
+    )
+    assert any(
+        cmd[:2] == ["docker", "cp"]
+        and cmd[-1] == "damru-bake-temp:/system/etc/init/damru-extra-ca-fix.rc"
+        for cmd in calls
+    )
+
+
+def test_bake_image_can_install_extra_system_ca_certificates() -> None:
+    source = inspect.getsource(RedroidManager.bake_image)
+
+    assert "_install_extra_system_ca_certificates" in source
+    assert "DAMRU_EXTRA_SYSTEM_CA_CERTS" in source
+    assert "DAMRU_MITM_CA_CERT" in source
+
+
 async def test_run_cmd_kills_timed_out_process(monkeypatch):
     class HangingProcess:
         returncode = None
@@ -161,6 +240,9 @@ async def test_start_container_enables_redroid_stream_uinput(monkeypatch):
 
     docker_run = next(call for call in calls if call[:2] == ["docker", "run"])
     assert _REDROID_STREAM_BOOT_ARG in docker_run
+    assert ["-p", "127.0.0.1:5600:5555"] == docker_run[
+        docker_run.index("-p") : docker_run.index("-p") + 2
+    ]
     mgr._materialize_input_event_nodes_early.assert_awaited_once_with("damru-worker-0")
     mgr._wait_for_container_boot_internal.assert_awaited_once()
     mgr._seed_adb_authorized_keys_early.assert_awaited_once_with("damru-worker-0")
