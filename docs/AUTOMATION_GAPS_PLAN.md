@@ -1,5 +1,9 @@
 # Damru Automation Status and Roadmap
 
+> Part of **Damru** — the open-source, Android-native stealth browser automation framework (Redroid + Playwright + CDP) for web scraping, automation testing, and anti-bot / fingerprinting research.
+
+*Roadmap for the open-source browser automation framework.*
+
 Last reviewed: 2026-06-05
 
 This file is the current automation checklist. Older notes in this repo may mention missing image setup, missing preflight, or missing WSL repair; those items are now implemented in the CLI and UI.
@@ -65,3 +69,14 @@ python -m damru ui
 3. Add optional signed/checksummed release manifest for the baked image and APK bundle.
 4. Improve UI setup wizard wording and disabled-state explanations.
 5. Keep expanding Chrome APK versions only after full install/launch/spoof validation.
+
+---
+
+## Related
+
+- [Main README](../README.md)
+- [Verification Proof](PROOF.md)
+- [Image & APK Readiness](IMAGE_AUTOPULL_FIX.md)
+- [Scripts](../scripts/README.md)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>

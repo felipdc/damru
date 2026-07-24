@@ -1,15 +1,18 @@
-﻿<div align="center">
+
+<div align="center">
   <img src="logo.svg" alt="Damru Logo" width="200" height="200">
   <h1>Damru</h1>
   <p><strong>The Apex Predator of Android Browser Automation</strong></p>
   <p><em>श्री शिवाय नमस्तुभ्यं</em></p>
   <p><em>The world's first open-source framework for natively modded Android browser automation.</em></p>
-  <p>High-performance, ultra-stealth browser automation framework designed for web scraping and botting at scale.</p>
-
-  [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
-  [![Playwright](https://img.shields.io/badge/playwright-1.40--1.59-green.svg?style=for-the-badge&logo=playwright&logoColor=white)](https://playwright.dev/python/)
-  [![Platform](https://img.shields.io/badge/Platform-Ubuntu%2024.04%20%7C%20WSL2-lightgrey.svg?style=for-the-badge&logo=ubuntu&logoColor=white)](#minimum-system-requirements)
-  [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-red.svg?style=for-the-badge)](https://polyformproject.org/licenses/noncommercial/1.0.0)
+<p>Part of <strong>Damru</strong> — the open-source, Android-native stealth browser automation framework (Redroid + Playwright + CDP) for web scraping, automation testing, and anti-bot / fingerprinting research.</p>
+<p>Damru is an open-source <strong>undetected-chromedriver alternative</strong> for <strong>stealth browser automation</strong> and <strong>web scraping</strong> — Android-native, built on Redroid + Playwright + CDP.</p>
+  <p>
+    <a href="https://python.org"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg?style=for-the-badge&logo=python&logoColor=white" alt="Python Version"></a>
+    <a href="https://playwright.dev/python/"><img src="https://img.shields.io/badge/playwright-1.40--1.59-green.svg?style=for-the-badge&logo=playwright&logoColor=white" alt="Playwright"></a>
+    <a href="#minimum-system-requirements"><img src="https://img.shields.io/badge/Platform-Ubuntu%2024.04%20%7C%20WSL2-lightgrey.svg?style=for-the-badge&logo=ubuntu&logoColor=white" alt="Platform"></a>
+    <a href="https://polyformproject.org/licenses/noncommercial/1.0.0"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-red.svg?style=for-the-badge" alt="License: PolyForm Noncommercial 1.0.0"></a>
+  </p>
 
   <p>
     <strong>Community:</strong>
@@ -25,7 +28,7 @@
       <h3>Keep Damru Research Public</h3>
       <p><strong>Damru is built through expensive anti-detect research:</strong> AI credits, RAM-heavy Redroid rebuilds, proxy tests, benchmark runs, and long debugging loops.</p>
       <p>If Damru saves you hours or helps your research, a donation keeps new stealth fixes, APK rotation, WebView hardening, and proof tests moving.</p>
-      <a href="https://damru.dev/"><img src="https://img.shields.io/badge/Donate%20Now-Keep%20Damru%20Alive-ff6b2b?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Donate to Damru"></a>
+      <a href="https://damru.dev/donate/"><img src="https://img.shields.io/badge/Donate%20Now-Keep%20Damru%20Alive-ff6b2b?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Donate to Damru"></a>
     </td>
   </tr>
 </table>
@@ -40,19 +43,65 @@
 
 ---
 
+# Damru — Android-Native Stealth Browser Automation
+
+## What is Damru?
+
+**Damru is the first open-source, Android-native stealth browser automation framework — it runs a real Android OS (via Redroid in Docker), drives Chrome through the Chrome DevTools Protocol (CDP) and Playwright, and applies OS-level + binary-level fingerprint spoofing with zero JavaScript injection.** It is purpose-built for developers and security researchers who need programmable mobile browser automation for web scraping, QA testing on real Android, and anti-bot / fingerprinting research.
+
+### Damru at a glance
+
+| Attribute | Value |
+| :--- | :--- |
+| **Platform** | Android (Redroid in Docker) |
+| **Spoofing layer** | OS / binary / CDP — no JS injection |
+| **Automation** | Playwright + Chrome DevTools Protocol |
+| **Detection surface covered** | Device props, GPU, TLS / JA3, network (WebRTC / IPv6) |
+| **Device profiles** | 155 real Android profiles (Samsung, Pixel, Xiaomi, OnePlus, and more) |
+| **Language** | Python |
+| **License** | PolyForm Noncommercial 1.0.0 |
+| **Closest alternative** | undetected-chromedriver (desktop) — Damru is Android-native |
+
+### Is Damru an undetected-chromedriver alternative?
+
+**Yes — Damru is the Android-native alternative to undetected-chromedriver: where undetected-chromedriver patches a desktop Chrome binary on x86, Damru runs a full Android OS inside Docker (Redroid) and spoofs fingerprints at the OS, binary, and CDP layers on real mobile Chrome, covering GPU, TLS/JA3, device properties, and network signals that desktop tools cannot reach.**
+
+### What is Android-native browser automation?
+
+**Android-native browser automation means driving a real Android operating system — not a desktop browser pretending to be mobile via viewport scaling — so the browser's hardware profile, GPU renderer, TLS stack, sensor readings, and network behaviour match an authentic physical Android device.** Damru achieves this by running Android 14 inside a Docker container (Redroid), patching system binaries before Chrome launches, and attaching Playwright via CDP.
+
+### How is Damru different from playwright-stealth?
+
+**Playwright-stealth and similar plugins inject JavaScript `Object.defineProperty` overrides into the page, which anti-bot systems detect by inspecting function `.toString()` output, prototype chains, and timing anomalies — Damru instead patches Chrome at the OS level (system props via `resetprop`), binary level (Vulkan/GLES `.so` GPU drivers), syscall level (`libfakemem.so` via `LD_PRELOAD`), and CDP protocol level, leaving zero JavaScript fingerprint in the page context.**
+
+## Use cases
+- **Web scraping** and authorized data collection at scale
+- **Browser automation** and QA testing on real Android
+- **Anti-bot / fingerprinting research**
+
+## Related
+
+- [Python API Reference](https://github.com/akwin1234/damru/wiki/Python-API-Guide)
+- [Device Profiles](https://github.com/akwin1234/damru/wiki/Android-Device-Profiles)
+- [Verification Proof](https://github.com/akwin1234/damru/wiki/Bypassing-Anti-Bots)
+- [WSL2 Kernel Notes](https://github.com/akwin1234/damru/wiki/WSL2-Deployment-Guide)
+- [Browser Benchmark Report](https://github.com/akwin1234/damru/wiki/Bypassing-Anti-Bots)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>
+
 ## Table of Contents
 
 - [Core Features](#core-features)
 - [Why Damru is Better](#why-damru-is-better-than-the-rest)
 - [Proof of Stealth: Benchmarks](#proof-of-stealth-benchmark-comparisons)
-- [Verification Proof](docs/PROOF.md)
+- [Verification Proof](https://github.com/akwin1234/damru/wiki/Bypassing-Anti-Bots)
 - [Architecture: The 8 Layers of Stealth](#architecture-the-8-layers-of-zero-js-stealth)
 - [Project Structure](#project-structure)
-- [Python API Documentation](docs/PYTHON_API.md)
-- [Device Profiles](docs/DEVICE_PROFILES.md)
-- [Viewer, Screenshots, and Video](docs/VIEWER.md)
-- [Local UI Guide](docs/UI.md)
-- [WSL2 Kernel Requirements](docs/WSL_KERNEL.md)
+- [Python API Documentation](https://github.com/akwin1234/damru/wiki/Python-API-Guide)
+- [Device Profiles](https://github.com/akwin1234/damru/wiki/Android-Device-Profiles)
+- [Viewer, Screenshots, and Video](https://github.com/akwin1234/damru/wiki/CLI-Command-Reference)
+- [Local UI Guide](https://github.com/akwin1234/damru/wiki/Quick-Start)
+- [WSL2 Kernel Requirements](https://github.com/akwin1234/damru/wiki/WSL2-Deployment-Guide)
 - [Download Custom OS Image](#download-custom-os-image)
 - [Quickstart Guide](#first-time-user-deployment-guide-wsl2--linux)
 - [Usage & Examples](#usage--examples)
@@ -121,25 +170,25 @@ The botting landscape is littered with tools that *used* to work: `puppeteer-ste
 | **Worker Stealth** | Workers often leak the real hardware concurrency of the host. | **Worker Interception**. Uses CDP `Target.setAutoAttach` to force overrides on all Threads/Workers. |
 | **TLS/JA3 Hash** | Fixed TLS fingerprint based on the Chrome binary version. | **TLS Randomization**. Produces ~184 unique JA3 hashes via dynamic cipher blacklisting. |
 | **Screen Dimensions** | Viewing desktop Chrome as mobile via viewport scaling (leaks real screen size). | **OS-Level Display**. Modifies Android `wm size/density` natively. |
-| **Network Identity** | Frequently leaks WebRTC private IPs and IPv6 fingerprints. | **OS-Level IP Tables** + **CDP**. Blocks IPv6 at kernel level; WebRTC shows proxy exit IP naturally. |
+| **Network Identity** | Frequently leaks WebRTC private IPs and IPv6 fingerprints. | **OS-Level IP Tables** + **CDP**. Blocks IPv6 at kernel level; WebRTC is blocked by default at kernel level to prevent leaks, with option to spoof proxy exit IP instead. |
 | **Mobile Emulation** | Desktop Chrome pretending to be mobile via viewport scaling. | **Real Android OS**. Runs inside Redroid (Android 14) or MuMu Player. It *is* mobile. |
 
 ### Proof of Stealth: Benchmark Comparisons
 
 We regularly test Damru against the hardest anti-bot systems in the industry. These results are reproducible using the built-in benchmark suite (`python -m damru benchmark`) or the comprehensive functional test suite (`python example.py`).
 
-Fresh Ubuntu/WSL verification proof is tracked in [docs/PROOF.md](docs/PROOF.md). The current sanitized Ubuntu VPS proof assets include:
+Fresh Ubuntu/WSL verification proof is tracked in [https://github.com/akwin1234/damru/wiki/Bypassing-Anti-Bots](https://github.com/akwin1234/damru/wiki/Bypassing-Anti-Bots). The current sanitized Ubuntu VPS proof assets include:
 
 - [Android screen recording](docs/assets/proof/ubuntu-redroid-proof.mp4)
 - Individual site proof screenshots: [Amazon](docs/assets/proof/sites/amazon.png), [Foot Locker / DataDome target](docs/assets/proof/sites/datadome-footlocker.png), [Fingerprint Pro](docs/assets/proof/sites/fingerprint-pro.png), [Sannysoft](docs/assets/proof/sites/sannysoft.png), and [CreepJS](docs/assets/proof/sites/creepjs.png)
 - [Sanitized site proof metadata](docs/assets/proof/sites/proof-sites.json)
 
-External benchmark proof: [docs/BROWSERS_BENCHMARK_REPORT.md](docs/BROWSERS_BENCHMARK_REPORT.md) records a sanitized Damru Redroid run against [`techinz/browsers-benchmark`](https://github.com/techinz/browsers-benchmark), with proxy credentials and IPs removed.
+External benchmark proof: [https://github.com/akwin1234/damru/wiki/Bypassing-Anti-Bots](https://github.com/akwin1234/damru/wiki/Bypassing-Anti-Bots) records a sanitized Damru Redroid run against [`techinz/browsers-benchmark`](https://github.com/techinz/browsers-benchmark), with proxy credentials and IPs removed.
 
 - **Final browser benchmark score:** 10/10 bypass targets, **100%** bypass rate.
 - **Adapter code:** [scripts/run_browsers_benchmark_damru.py](scripts/run_browsers_benchmark_damru.py).
 - **Targets passed:** Google Search, Cloudflare, DataDome, Amazon, Ticketmaster/Imperva, Akamai, PerimeterX/HUMAN, Kasada, and Reddit.
-- **Browser data:** CreepJS completed without benchmark error, WebRTC discovers proxy exit IP naturally (no blocking), and IP check completed through the configured residential proxy.
+- **Browser data:** CreepJS completed without benchmark error, WebRTC is blocked at kernel level by default to prevent all leaks (optionally spoofing proxy exit IP instead), and IP check completed through the configured residential proxy.
 - **Manual reCAPTCHA proof:** Damru UI antcpt checks returned **reCAPTCHA v3 score 0.9** in both direct and proxy modes; publish screenshots only after redacting the visible IP.
 
 #### Screenshot Proof Gallery
@@ -228,11 +277,11 @@ damru-project/
 
 For detailed information on how to use the Damru library programmatically, including class references, managed pooling, and advanced configuration, please see the:
 
-**[Damru Python API Reference](docs/PYTHON_API.md)**
+**[Damru Python API Reference](https://github.com/akwin1234/damru/wiki/Python-API-Guide)**
 
 For the full list of available Android identities, see the:
 
-**[Damru Device Profile Reference](docs/DEVICE_PROFILES.md)**
+**[Damru Device Profile Reference](https://github.com/akwin1234/damru/wiki/Android-Device-Profiles)**
 
 Default `device="random"` and UI random-profile actions use the premium pool: 51 original verified profiles plus 49 high-confidence new profiles. Use an explicit `device=...` or `--profile-tier medium|experimental|all` only when you intentionally want wider lower-confidence diversity.
 
@@ -251,7 +300,7 @@ Default `device="random"` and UI random-profile actions use the premium pool: 51
 
 Download the current pre-baked image:
 
-**[Download damru-redroid-latest.tar](https://drive.google.com/file/d/1AzSTOlGpSfqHB-F-Yty2JqbOEMlgFT5F/view?usp=sharing)**
+**[Download damru-baked.tar.gz](https://dl.damru.dev/assets/damru-baked.tar.gz)**
 
 Current local artifact prepared for release testing:
 
@@ -280,7 +329,7 @@ Once downloaded, follow **Step 3** in the Deployment Guide below to load it into
 
 Normal users should prefer `python -m damru install-image`; the baked image already contains Chrome, WebView/TTS assets, fonts, and warm preferences. Use the raw APK bundle only when you want to bake your own image or run unbaked raw Redroid containers.
 
-Google Drive bundle: [Chrome/WebView/TTS/resetprop APK assets](https://drive.google.com/file/d/1xh5Z-LXqUIEjO08KKjhaB_89KS2pBWZq/view?usp=sharing)
+APK bundle: [Chrome/WebView/TTS/resetprop APK assets](https://dl.damru.dev/assets/chrome-apks.zip)
 
 Automatic install:
 
@@ -439,11 +488,11 @@ python -m damru check-env
 `install-deps` is idempotent: on a fresh Ubuntu WSL/Linux install it installs ADB, Docker, iptables, curl/wget/git/jq, mounts binderfs, and starts Docker. On later runs it reuses installed packages and rehydrates Docker/binderfs after WSL restarts.
 `install-image` loads the baked `damru-redroid:latest` image, which already contains Chrome, WebView/TTS assets, fonts, and warm preferences. Users do not need to provide Chrome APKs unless they intentionally run an unbaked raw Redroid image.
 
-On Windows/WSL2, Damru runs Docker and Redroid inside WSL and routes Redroid ADB through WSL. When Docker-published ADB ports are unreliable, Damru uses host networking and remaps each Redroid worker's `adbd` to a unique port (`5600`, `5601`, ...), so multi-worker pools can still run without native Windows Docker. Native Linux uses Docker bridge/NAT and Damru selects the nft iptables backend to match modern Docker daemons; WSL prefers legacy iptables where available because some WSL kernels reject Docker's `addrtype` NAT rule through nft. See [WSL kernel notes](docs/WSL_KERNEL.md) and the latest [WSL fallback test results](docs/WSL_FALLBACK_TEST_RESULTS.md).
+On Windows/WSL2, Damru runs Docker and Redroid inside WSL and routes Redroid ADB through WSL. When Docker-published ADB ports are unreliable, Damru uses host networking and remaps each Redroid worker's `adbd` to a unique port (`5600`, `5601`, ...), so multi-worker pools can still run without native Windows Docker. Native Linux uses Docker bridge/NAT and Damru selects the nft iptables backend to match modern Docker daemons; WSL prefers legacy iptables where available because some WSL kernels reject Docker's `addrtype` NAT rule through nft. See [WSL kernel notes](https://github.com/akwin1234/damru/wiki/WSL2-Deployment-Guide) and the latest [WSL fallback test results](https://github.com/akwin1234/damru/wiki/WSL2-Deployment-Guide).
 
 Damru's WSL kernel installer also writes `dnsTunneling=true` and `networkingMode=NAT` into `%USERPROFILE%\.wslconfig`. This avoids a common WSL failure where the distro can ping public IPs but `apt`, `pip`, or Docker containers cannot resolve DNS names. Run `wsl --shutdown` after kernel/DNS changes, then reopen Ubuntu.
 
-Current validation on June 4, 2026. Full sanitized notes are in [Verification Proof](docs/PROOF.md):
+Current validation on June 4, 2026. Full sanitized notes are in [Verification Proof](https://github.com/akwin1234/damru/wiki/Bypassing-Anti-Bots):
 
 - Disposable Ubuntu WSL2 fresh-loop distro: `install-deps -y`, `install-image`, preflight, single-worker smoke, two-worker smoke, `quick-check`, and `open-url https://example.com` passed. The protected kernel-source WSL distro was not touched.
 - Native Ubuntu 24.04 VPS reset/current-tree loop: fresh venv, `install-deps -y`, preflight, two workers, `quick-check`, and `open-url https://example.com` passed.
@@ -572,7 +621,7 @@ If Docker still fails inside WSL, run the safe repair/diagnostic pass:
 python -m damru fix-wsl
 ```
 
-If it reports a missing kernel module such as `xt_addrtype`, the active WSL2 kernel lacks Docker bridge/NAT support. See [WSL2 Kernel Requirements](docs/WSL_KERNEL.md).
+If it reports a missing kernel module such as `xt_addrtype`, the active WSL2 kernel lacks Docker bridge/NAT support. See [WSL2 Kernel Requirements](https://github.com/akwin1234/damru/wiki/WSL2-Deployment-Guide).
 
 For scripted setup with a custom WSL distro/user, pass them explicitly:
 
@@ -664,7 +713,7 @@ printf '%s\n' 'your-sudo-password' | python -m damru setup -y --sudo-password-st
 printf '%s\n' 'your-sudo-password' | python -m damru install-deps -y --sudo-password-stdin
 ```
 
-For visual inspection or manual browser operation, see [Viewer, Screenshots, and Video](docs/VIEWER.md). Viewer support is optional and never starts automatically during `AsyncDamru`, `Damru`, or pool sessions.
+For visual inspection or manual browser operation, see [Viewer, Screenshots, and Video](https://github.com/akwin1234/damru/wiki/CLI-Command-Reference). Viewer support is optional and never starts automatically during `AsyncDamru`, `Damru`, or pool sessions.
 
 Use `stealth-open-url` when you want CLI/UI URL opening with Damru's full profile setup. The default `--mode reattach` path applies or reuses the selected profile, proxy, timezone, locale, WebRTC policy, TLS setup, and Chrome state, disconnects CDP for the protected navigation, opens the target URL through Android's native Chrome `VIEW` intent, then reconnects CDP so the loaded page can still be inspected or automated after load. It reuses existing Chrome/profile state by default for fast repeated opens; pass `--cold-start` when you need a fresh Chrome identity. Use `--mode cdp` when you need CDP-side overrides to stay live during the native open, `--mode native` when you want to leave CDP detached after opening, and `--mode playwright` only when you specifically want the raw Playwright `page.goto` path for debugging.
 
@@ -678,11 +727,15 @@ python -m damru ui
 
 Open the printed `http://127.0.0.1:<port>` URL. The UI is local-only by default and uses an allowlisted backend; it does not expose arbitrary shell execution. The dashboard shows WSL controls only on Windows and native Ubuntu controls on Linux. Good setup checks collapse by default so failures stay visible. Work Lab can open URLs through a full Damru stealth session, run quick stealth checks, capture screenshots, clear the gallery, repair internet, apply random profiles, and stream a browser viewer for the selected worker. UI URL navigation is slower than a raw Android `am start` because it applies proxy, timezone, locale, UA/client hints, GPU, hardware, WebRTC, and TLS setup before leaving Chrome visible for inspection. For smoother manual control, use **Copy native command** in Work Lab and paste it in a terminal to launch `scrcpy` for the selected worker.
 
-Full UI documentation with every page screenshot is in [docs/UI.md](docs/UI.md).
+Full UI documentation with every page screenshot is in [https://github.com/akwin1234/damru/wiki/Quick-Start](https://github.com/akwin1234/damru/wiki/Quick-Start).
 
-| Dashboard | Workers |
-| :---: | :---: |
-| <img src="docs/assets/ui/dashboard.png" alt="Damru UI dashboard" width="420"> | <img src="docs/assets/ui/workers.png" alt="Damru UI workers page" width="420"> |
+| Dashboard |
+| :---: |
+| <img src="docs/assets/ui/dashboard.png" alt="Damru UI dashboard" width="620"> |
+
+| Workers |
+| :---: |
+| <img src="docs/assets/ui/workers.png" alt="Damru UI workers page" width="620"> |
 
 | Work Lab |
 | :---: |
@@ -760,7 +813,7 @@ Damru uses a centralized configuration file located at `damru/config.py`. If you
    python -m damru install-apks --download
    ```
 
-   It downloads the Chrome/WebView/TTS/resetprop APK bundle automatically, extracts to `/home/damru/chrome-apks` on Linux/WSL, validates the 143-148 Chrome split-APK folders, and configures `CHROME_APK` only when needed. The [Google Drive APK bundle](https://drive.google.com/file/d/1xh5Z-LXqUIEjO08KKjhaB_89KS2pBWZq/view?usp=sharing) is for manual recovery if automatic download is unavailable.
+   It downloads the Chrome/WebView/TTS/resetprop APK bundle automatically, extracts to `/home/damru/chrome-apks` on Linux/WSL, validates the 143-148 Chrome split-APK folders, and configures `CHROME_APK` only when needed. The [APK bundle](https://dl.damru.dev/assets/chrome-apks.zip) is for manual recovery if automatic download is unavailable.
 
    If you still see an APK asset error, download the same Google Drive bundle manually, extract it as `/home/damru/chrome-apks`, keep the WebView/TTS/Magisk APKs beside the Chrome version folders, then set `CHROME_APK` to a Chrome split-APK version directory, for example:
 
@@ -958,6 +1011,30 @@ with DamruPoolSync(mode="auto", max_devices=3, proxies=proxies) as pool:
 
 ---
 
+### Example 5: Using DamruPool for Multi-Device Automation
+
+```python
+import asyncio
+from damru import DamruPool
+
+async def main():
+    # Pool manages N workers (default: NUM_DEVICES from config, or up to 10)
+    # Each session gets a fresh random fingerprint with full stealth
+    proxy = "socks5://user:pass@residential-proxy.com:1080"
+    async with DamruPool(max_devices=2) as pool:
+        # session() yields a Playwright BrowserContext with full stealth applied
+        async with pool.session() as ctx:
+            page = await ctx.new_page()
+            await page.goto("https://example.com")
+            print(await page.title())
+
+        # Or use the convenience wrapper for one-shot navigation:
+        title = await pool.open_url("127.0.0.1:5600", "https://shopee.com.br/", proxy=proxy)
+        print(f"Title: {title}")
+
+asyncio.run(main())
+```
+
 ## Testing Your Setup
 
 Start with the fast readiness and Android sanity checks before running full benchmarks:
@@ -982,7 +1059,7 @@ python -m damru benchmark --device samsung_galaxy_s24_ultra --proxy socks5://ip:
 
 ## The "Big Plan" (Roadmap)
 
-We are aggressively building Damru into a fully autonomous infrastructure tool. Check `docs/AUTOMATION_GAPS_PLAN.md` for details.
+We are aggressively building Damru into a fully autonomous infrastructure tool. Check `https://github.com/akwin1234/damru/wiki/Troubleshooting-and-FAQ` for details.
 
 *   [x] **`damru setup` CLI**: Single-command configuration plus Linux/WSL dependency setup.
 *   [x] **Automated Health Checks**: Verification of ADB, Docker, binderfs, Chrome APKs, images, Playwright patches, resources, ports, and WSL kernel state.
@@ -993,6 +1070,17 @@ We are aggressively building Damru into a fully autonomous infrastructure tool. 
 *   [ ] **Packaging polish**: More release automation, smaller proof packs, clearer issue templates, and better first-run UI guidance.
 
 ---
+
+## Changelog (v0.1.0-beta ? v1.2)
+
+- **WebView version matching**: Relaxed to match on first 3 version segments (x.y.z) allowing minor build skew between Chrome and WebView APKs
+- **APK version selection**: `_preferred_chrome_apk_version_dir` now prefers Chrome versions that have a matching `webview.apk` in their directory
+- **Image download**: `install-image --download` now accepts direct HTTPS URLs in addition to Google Drive links
+- **Bake image cleanup**: Pre-commit cleanup removes temp APKs, dalvik-cache, logs, etc. reducing baked image size
+- **WSL serial compatibility**: `wsl:` serial prefix is automatically stripped on Linux hosts
+- **Sensor HAL bake**: Missing AIDL compiler no longer breaks `bake-image` — sensor HAL install is skipped gracefully
+- **Worker default cap**: Raised from 3 to 10 when NUM_DEVICES is unset
+- **Pool API**: Added `open_url()` convenience method for one-shot stealth navigation
 
 ## Frequently Asked Questions
 
@@ -1020,7 +1108,7 @@ Damru is not a wrapper around a normal browser. It is a native Android automatio
 If Damru helped you avoid days of setup, debugging, fingerprint leaks, or broken Android automation, please support the project:
 
 <div align="center">
-  <a href="https://damru.dev/"><img src="https://img.shields.io/badge/Donate%20to%20Damru-Fund%20the%20next%20stealth%20fix-ff6b2b?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Donate to Damru"></a>
+  <a href="https://damru.dev/donate/"><img src="https://img.shields.io/badge/Donate%20to%20Damru-Fund%20the%20next%20stealth%20fix-ff6b2b?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Donate to Damru"></a>
 </div>
 
 Your support helps keep the best research public instead of locked behind a private SaaS.
@@ -1044,41 +1132,6 @@ Damru is built on the shoulders of giants. We would like to credit the following
 ---
 
 
-
-### Example 5: Using DamruPool for Multi-Device Automation
-
-```python
-import asyncio
-from damru import DamruPool
-
-async def main():
-    # Pool manages N workers (default: NUM_DEVICES from config, or up to 10)
-    # Each session gets a fresh random fingerprint with full stealth
-    proxy = "socks5://user:pass@residential-proxy.com:1080"
-    async with DamruPool(max_devices=2) as pool:
-        # session() yields a Playwright BrowserContext with full stealth applied
-        async with pool.session() as ctx:
-            page = await ctx.new_page()
-            await page.goto("https://example.com")
-            print(await page.title())
-
-        # Or use the convenience wrapper for one-shot navigation:
-        title = await pool.open_url("127.0.0.1:5600", "https://shopee.com.br/", proxy=proxy)
-        print(f"Title: {title}")
-
-asyncio.run(main())
-```
-
-### Changelog (v0.1.0-beta → v1.2)
-
-- **WebView version matching**: Relaxed to match on first 3 version segments (x.y.z) allowing minor build skew between Chrome and WebView APKs
-- **APK version selection**: `_preferred_chrome_apk_version_dir` now prefers Chrome versions that have a matching `webview.apk` in their directory
-- **Image download**: `install-image --download` now accepts direct HTTPS URLs in addition to Google Drive links
-- **Bake image cleanup**: Pre-commit cleanup removes temp APKs, dalvik-cache, logs, etc. reducing baked image size
-- **WSL serial compatibility**: `wsl:` serial prefix is automatically stripped on Linux hosts
-- **Sensor HAL bake**: Missing AIDL compiler no longer breaks `bake-image` — sensor HAL install is skipped gracefully
-- **Worker default cap**: Raised from 3 to 10 when NUM_DEVICES is unset
-- **Pool API**: Added `open_url()` convenience method for one-shot stealth navigation
 
 ## License & Fork Policy
 
@@ -1113,3 +1166,5 @@ Using automation frameworks against high-security systems carries inherent risks
 
 ### 5. Commercial and Business Use Restriction
 In accordance with the **PolyForm Noncommercial License 1.0.0**, all commercial and business use of this Software is strictly prohibited. This includes, but is not limited to, use by for-profit entities, use in support of commercial services, or any activity directed toward monetary compensation. The Software is licensed exclusively for personal, educational, and non-commercial research purposes.
+
+---

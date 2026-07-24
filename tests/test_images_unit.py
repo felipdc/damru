@@ -213,6 +213,22 @@ async def test_run_cmd_kills_timed_out_process(monkeypatch):
     assert process.communicate_calls == 2
 
 
+async def test_prune_empty_process_cgroups_uses_safe_rmdir_janitor():
+    mgr = RedroidManager()
+    mgr._is_windows = False
+    mgr._get_container_state = AsyncMock(return_value="running")
+    mgr._run_cmd = AsyncMock(return_value="47 3\n")
+
+    removed = await mgr.prune_empty_process_cgroups(2, timeout=19)
+
+    assert removed == 44
+    command = mgr._run_cmd.await_args.args[0]
+    assert command[:4] == ["docker", "exec", "damru-worker-2", "sh"]
+    assert "-name 'pid_*'" in command[-1]
+    assert "-exec rmdir {} +" in command[-1]
+    assert mgr._run_cmd.await_args.kwargs["timeout"] == 19
+
+
 async def test_start_container_enables_redroid_stream_uinput(monkeypatch):
     calls = []
 

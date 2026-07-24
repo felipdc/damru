@@ -1,5 +1,9 @@
 # Legacy WSL Fallback Test Results
 
+> Part of **Damru** — the open-source, Android-native stealth browser automation framework (Redroid + Playwright + CDP) for web scraping, automation testing, and anti-bot / fingerprinting research.
+
+*Setup for Android-native browser automation on WSL2.*
+
 Test date: 2026-06-01
 
 > **Historical note:** This file records the old no-custom-kernel host-network fallback experiment. It is not the recommended public setup path anymore. Current Damru WSL users should use Ubuntu WSL2 with the bundled Damru WSL kernel, Docker bridge/NAT, published per-worker ADB ports, `python -m damru check preflight`, and `python -m damru fix-wsl`. See [WSL_KERNEL.md](WSL_KERNEL.md) and [PROOF.md](PROOF.md) for the current June 4, 2026 validation.
@@ -46,3 +50,14 @@ Important files:
 - `playwright-page-screenshot.png`
 - `redroid-screen-fixed.png`
 - `redroid-record.mp4`
+
+---
+
+## Related
+
+- [WSL2 Kernel Notes](WSL_KERNEL.md)
+- [Main README](../README.md)
+- [Verification Proof](PROOF.md)
+- [Bundled WSL Kernel Artifact](../damru/wsl_kernel/README.md)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>

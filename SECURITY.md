@@ -1,5 +1,9 @@
 # Security Policy
 
+> Part of **Damru** — the open-source, Android-native stealth browser automation framework (Redroid + Playwright + CDP) for web scraping, automation testing, and anti-bot / fingerprinting research.
+
+*Part of the Damru open-source browser automation project.*
+
 ## Supported Versions
 
 Damru is currently in Beta. We provide security updates and patches primarily for the latest `main` branch. 
@@ -23,3 +27,14 @@ We will acknowledge receipt of your vulnerability report within 48 hours and str
 *   Your OS environment and whether you are using Redroid or MuMu Player.
 
 Thank you for helping keep Damru the apex predator of browser automation!
+
+---
+
+## Related
+
+- [Main README](README.md)
+- [Contributing Guide](CONTRIBUTING.md)
+- [Legal Policy](LEGAL.md)
+- [Verification Proof](docs/PROOF.md)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>

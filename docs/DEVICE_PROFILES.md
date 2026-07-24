@@ -1,5 +1,9 @@
 # Device Profiles
 
+> Part of **Damru** — the open-source, Android-native browser automation framework (Redroid + Playwright + CDP) — 155 real Android device profiles for stealth web scraping and anti-bot / fingerprinting research.
+
+*Device fingerprint profiles for stealth browser automation and antidetect testing.*
+
 This file is generated from `damru/devices.py` and lists the Android device profiles available to Damru.
 
 Use a profile by passing its exact name, model, or slug to `device=...`, for example:
@@ -200,5 +204,16 @@ Opt-in experimental pool: 17
 - `device_memory` is the Chrome-visible memory bucket, capped to browser-reported values.
 - Android versions are the supported spoofing range for that profile. The default build fingerprint is the version listed in `damru/devices.py`.
 - Screen variants are realistic alternate display modes used by some devices, such as FHD+ and WQHD+.
+
+---
+
+## Related
+
+- [Python API Reference](PYTHON_API.md)
+- [Main README](../README.md)
+- [Browser Benchmark Report](BROWSERS_BENCHMARK_REPORT.md)
+- [Android Virtualization Research](../research/android-virtualization-alternatives.md)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>
 - The `gpu_family` field is derived from the configured WebGL vendor/renderer and helps avoid incompatible emulator/profile pairings.
 - Empty Android `navigator.plugins` / `navigator.mimeTypes` arrays are normal for Android Chrome and are not a profile failure.

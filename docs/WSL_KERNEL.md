@@ -1,5 +1,9 @@
 # WSL2 Kernel Notes for Docker and Redroid
 
+> Part of **Damru** — the open-source, Android-native stealth browser automation framework (Redroid + Playwright + CDP) for web scraping, automation testing, and anti-bot / fingerprinting research.
+
+*Setup for Android-native browser automation on WSL2.*
+
 Damru can install Linux packages and apply common WSL fixes, but Redroid depends on kernel features that Python cannot create at runtime.
 
 ## Required Environment
@@ -184,3 +188,14 @@ python -m damru open-url --serial 127.0.0.1:5900 --url https://example.com
 The disposable WSL distro then passed a two-worker Redroid smoke. Both workers reported Android boot complete, Chrome installed, DNS present, locale present, timezone present, and Android Chrome opened `https://example.com` on the first worker.
 
 Native Ubuntu/Linux does not use the WSL kernel installer. The native Ubuntu 24.04 path was reset by removing Docker packages/state in earlier loops, then validated again with a fresh Python venv, `python -m damru install-deps -y`, `python -m damru check preflight --json`, two Redroid workers, `quick-check` on both workers, and `open-url https://example.com`. Native Linux selected `iptables-nft` and Docker bridge/NAT passed.
+
+---
+
+## Related
+
+- [Bundled WSL Kernel Artifact](../damru/wsl_kernel/README.md)
+- [Main README](../README.md)
+- [WSL Fallback Test Results](WSL_FALLBACK_TEST_RESULTS.md)
+- [Verification Proof](PROOF.md)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>

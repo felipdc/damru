@@ -1,5 +1,9 @@
 # Chrome APK Bundle (`chrome-apks/`)
 
+> Part of **Damru** — the open-source, Android-native stealth browser automation framework (Redroid + Playwright + CDP) for web scraping, automation testing, and anti-bot / fingerprinting research.
+
+*Chrome APK assets for Android-native browser automation and antidetect browser version rotation.*
+
 Damru normally uses the baked `damru-redroid:latest` image. That image already contains Chrome, WebView/TTS assets, fonts, warm browser preferences, and native assets. Most users do not need to manage APKs manually.
 
 This folder is for raw/unbaked Redroid, image baking, APK recovery, and Chrome version rotation.
@@ -107,3 +111,14 @@ On Windows, extract with File Explorer or 7-Zip. If Damru runs inside WSL, use t
 - **Raw/unbaked image:** Damru installs Chrome/WebView/TTS APKs on cold start, which is slower and has more moving parts.
 - **Image baking:** run `install-apks --download`, then `python -m damru bake-image --image damru-redroid:latest` inside Linux/WSL.
 - **Release artifact:** `chrome-apks.zip` is generated from this folder for external hosting; the large zip is not meant to be committed.
+
+---
+
+## Related
+
+- [Main README](../README.md)
+- [Image & APK Readiness](../docs/IMAGE_AUTOPULL_FIX.md)
+- [Automation Status & Roadmap](../docs/AUTOMATION_GAPS_PLAN.md)
+- [Damru Core Library](../damru/README.md)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>

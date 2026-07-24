@@ -1,5 +1,9 @@
 # Tools & Assets (`tools/`)
 
+> Part of **Damru** — the open-source, Android-native stealth browser automation framework (Redroid + Playwright + CDP) for web scraping, automation testing, and anti-bot / fingerprinting research.
+
+*Development tools for Android-native browser automation research.*
+
 This directory contains external tools, assets, and third-party binaries used for Android environment research and development.
 
 ---
@@ -15,3 +19,14 @@ Provided for developers who want to manually explore the Redroid container, debu
 ---
 
 Do not commit sensitive keys or large unmodified third-party binaries here unless they are required for the build or release pipeline.
+
+---
+
+## Related
+
+- [Chrome APK Bundle](../chrome-apks/README.md)
+- [Main README](../README.md)
+- [Native Binaries](../native/README.md)
+- [Damru Core Library](../damru/README.md)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>

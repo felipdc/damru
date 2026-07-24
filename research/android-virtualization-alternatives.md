@@ -1,5 +1,9 @@
 # Research Report: Android Virtualization Alternatives for Browser Fingerprint Stealth
 
+> Part of **Damru** — the open-source, Android-native stealth browser automation framework (Redroid + Playwright + CDP) — research into Android virtualization, GPU fingerprinting, and antidetect techniques for web scraping and bot-detection research.
+
+*Research notes for Android-native stealth browser automation.*
+
 **Date**: February 16, 2026
 **Context**: Seeking alternatives to redroid for running Android container/emulator images with better GPU fingerprint stealth
 **Current Setup**: redroid 14.0.0_64only-latest in Docker/WSL2 with SwiftShader GPU causing detectable fingerprint anomalies
@@ -69,7 +73,7 @@ After comprehensive research into Android virtualization alternatives, **no solu
 
 #### Scalability
 - **Excellent**: Designed for multi-tenancy
-- Can run 40+ instances with adequate resources (160 cores, 320GB RAM for 40×4core/8GB instances)
+- Can run 40+ instances with adequate resources (160 cores, 320GB RAM for 40�—4core/8GB instances)
 - Each instance uses unique port (6520, 6521, 6522...)
 - Kubernetes-ready for cloud deployments
 
@@ -592,3 +596,14 @@ Focus should be on:
 **Research completed**: February 16, 2026
 **Researcher**: Claude (Sonnet 4.5)
 **Report for**: damru Android browser automation project
+
+---
+
+## Related
+
+- [Main README](../README.md)
+- [Native Binaries](../native/README.md)
+- [Browser Benchmark Report](../docs/BROWSERS_BENCHMARK_REPORT.md)
+- [Android Sensor Hardening](android_sensor_hardening.md)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>

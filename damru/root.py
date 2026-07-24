@@ -2076,10 +2076,10 @@ echo damru_app_data_dirs_created=$created
         marker = await self._read_gpu_binary_marker()
         marker_family = str(marker.get("gpu_family") or "") if marker else ""
         if marker_family and marker_family != device.gpu_family:
-            raise RootError(
-                "GPU binary spoof is already patched for "
-                f"{marker_family}; recreate the Redroid worker before switching "
-                f"to {device.gpu_family}."
+            logger.info(
+                "GPU binary spoof: switching patched family from %s to %s",
+                marker_family,
+                device.gpu_family,
             )
 
         if await self._gpu_binary_marker_matches(

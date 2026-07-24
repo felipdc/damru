@@ -1,5 +1,9 @@
 # Test Suite
 
+> Part of **Damru** — the open-source, Android-native stealth browser automation framework (Redroid + Playwright + CDP) for web scraping, automation testing, and anti-bot / fingerprinting research.
+
+*Test suite for the Damru open-source browser automation framework.*
+
 Damru has two kinds of tests:
 
 - Fast unit tests that do not need Android, Docker, Redroid, ADB, GPU access, or live websites.
@@ -28,3 +32,14 @@ python -m damru fix-wsl
 ```
 
 Manual probe scripts can still be run directly with `python tests/<script>.py` when you intentionally want a live browser/device check.
+
+---
+
+## Related
+
+- [Main README](../README.md)
+- [Verification Proof](../docs/PROOF.md)
+- [Browser Benchmark Report](../docs/BROWSERS_BENCHMARK_REPORT.md)
+- [Contributing Guide](../CONTRIBUTING.md)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>

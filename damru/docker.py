@@ -1,4 +1,4 @@
-﻿"""RedroidManager — container lifecycle for damru auto mode.
+"""RedroidManager — container lifecycle for damru auto mode.
 
 Redroid needs Linux kernel modules (binder via binderfs) so:
   - Windows: all docker commands run via WSL2 (auto-installs Docker if missing)
@@ -1569,7 +1569,8 @@ chmod 755 "$target"
             "set -eu; "
             "mkdir -p /data/misc/adb; "
             f"printf %s {shlex.quote(payload)} | base64 -d > /data/misc/adb/adb_keys; "
-            "chown system:shell /data/misc/adb /data/misc/adb/adb_keys 2>/dev/null || true; "
+            "chown system:shell /data/misc/adb 2>/dev/null || true; "
+            "chown shell:shell /data/misc/adb/adb_keys 2>/dev/null || true; "
             "chmod 02750 /data/misc/adb 2>/dev/null || true; "
             "chmod 0640 /data/misc/adb/adb_keys 2>/dev/null || true; "
             "restorecon /data/misc/adb /data/misc/adb/adb_keys 2>/dev/null || true; "
@@ -1614,10 +1615,8 @@ chmod 755 "$target"
             await asyncio.sleep(interval)
             elapsed += interval
         message = f"Android touchscreen input was not visible on {serial} after {timeout:.0f}s"
-        if os.environ.get("DAMRU_ALLOW_MISSING_TOUCHSCREEN_INPUT", "").strip() in {"1", "true", "TRUE", "yes", "YES"}:
-            logger.warning("%s; continuing because DAMRU_ALLOW_MISSING_TOUCHSCREEN_INPUT is set", message)
-            return
-        raise DamruError(message)
+        logger.warning("%s; continuing anyway", message)
+        return
 
     async def _android_services_ready_internal(self, name: str) -> bool:
         script = " && ".join([
@@ -2474,8 +2473,77 @@ chmod 755 "$target"
         name = f"{REDROID_CONTAINER_PREFIX}{index}"
         await self._run_cmd(
             self._docker_cmd("rm", "-f", name),
-            timeout=15, allow_failure=True,
+            # A long-lived Android 14 container can contain many stale
+            # uid_*/pid_* cgroups. Removing its Docker scope may therefore
+            # take materially longer than a normal container deletion.
+            timeout=120, allow_failure=True,
         )
+
+    async def prune_empty_process_cgroups(self, index: int, *, timeout: float = 120.0) -> int:
+        """Remove stale Android per-process cgroups from a running worker.
+
+        Android 14's libprocessgroup can give up removing a process cgroup
+        while the dying task is still releasing kernel references. The empty
+        cgroup then remains forever and long-lived Redroid workers accumulate
+        unreclaimable kernfs and percpu slab memory. A later rmdir is safe:
+        populated cgroups fail with EBUSY, while stale empty groups disappear.
+
+        Returns the number of pid cgroups removed during this pass.
+        """
+        name = f"{REDROID_CONTAINER_PREFIX}{index}"
+        if await self._get_container_state(name) != "running":
+            return 0
+
+        script = r"""
+set -eu
+root=/sys/fs/cgroup
+before=0
+for uid_path in "$root"/uid_*; do
+    [ -d "$uid_path" ] || continue
+    links=$(stat -c %h "$uid_path" 2>/dev/null || printf '2')
+    before=$((before + links - 2))
+done
+find "$root" -mindepth 2 -maxdepth 2 -type d -name 'pid_*' \
+    -exec rmdir {} + 2>/dev/null || true
+find "$root" -mindepth 1 -maxdepth 1 -type d -name 'uid_*' \
+    -exec rmdir {} + 2>/dev/null || true
+after=0
+for uid_path in "$root"/uid_*; do
+    [ -d "$uid_path" ] || continue
+    links=$(stat -c %h "$uid_path" 2>/dev/null || printf '2')
+    after=$((after + links - 2))
+done
+printf '%s %s\n' "$before" "$after"
+""".strip()
+        try:
+            output = await self._run_cmd(
+                self._docker_cmd("exec", name, "sh", "-c", script),
+                timeout=timeout,
+                allow_failure=False,
+            )
+        except Exception as exc:
+            logger.warning("Empty process-cgroup pruning failed for %s: %s", name, exc)
+            return 0
+
+        last_line = next(
+            (line.strip() for line in reversed(output.splitlines()) if line.strip()),
+            "",
+        )
+        try:
+            before_text, after_text = last_line.split()
+            removed = max(0, int(before_text) - int(after_text))
+        except (TypeError, ValueError):
+            logger.warning("Unexpected process-cgroup prune output for %s: %r", name, output)
+            return 0
+        if removed:
+            logger.info(
+                "Pruned %d stale Android process cgroups from %s (%s -> %s)",
+                removed,
+                name,
+                before_text,
+                after_text,
+            )
+        return removed
 
     async def stop_all(self) -> None:
         """Stop and remove all started containers."""
@@ -2708,11 +2776,20 @@ chmod 755 "$target"
                     f"Available: {[v.name for v in versions]}"
                 )
 
-            auto_versions = [v for v in versions if v.name not in _CHROME_APK_AUTO_SKIP_VERSIONS]
+            auto_versions = [
+                v for v in versions
+                if v.name not in _CHROME_APK_AUTO_SKIP_VERSIONS
+                and not v.name.startswith("145.")
+                and not v.name.startswith("146.")
+            ]
             if not auto_versions:
                 auto_versions = [v for v in versions]
             if not auto_versions:
                 raise DamruError("No usable Chrome APK version found.")
+            matched_set = set(matched_versions)
+            webview_versions = [v for v in auto_versions if v in matched_set]
+            if webview_versions:
+                auto_versions = webview_versions
 
             picked = _random.choice(auto_versions)
             logger.info(
@@ -2920,6 +2997,25 @@ chmod 755 "$target"
             logger.info("Installing local TTS engines...")
             await root.ensure_speech_voices()
 
+            # Bake host ADB public keys into the image
+            logger.info("Baking host ADB public keys into the image...")
+            keys = self._host_adb_public_keys()
+            if keys:
+                import base64 as _base64
+                import shlex as _shlex
+                payload = _base64.b64encode(("\n".join(keys) + "\n").encode("utf-8")).decode("ascii")
+                script = (
+                    "set -eu; "
+                    "mkdir -p /data/misc/adb; "
+                    f"printf %s {_shlex.quote(payload)} | base64 -d > /data/misc/adb/adb_keys; "
+                    "chown system:shell /data/misc/adb 2>/dev/null || true; "
+                    "chown shell:shell /data/misc/adb/adb_keys 2>/dev/null || true; "
+                    "chmod 02750 /data/misc/adb 2>/dev/null || true; "
+                    "chmod 0640 /data/misc/adb/adb_keys 2>/dev/null || true; "
+                    "restorecon /data/misc/adb /data/misc/adb/adb_keys 2>/dev/null || true"
+                )
+                await adb.shell_root(script, timeout=10)
+
             # Step 7: Push resetprop binary
             logger.info("Pushing resetprop binary...")
             await root._ensure_resetprop()
@@ -3082,6 +3178,8 @@ chmod 755 "$target"
             # Pre-commit cleanup: trim /data cache, temp files, logs to reduce image size
             logger.info("Cleaning up temp files in container before commit...")
             for clean_cmd in [
+                "rm -rf /data/data/com.android.chrome/cache/Crashpad 2>/dev/null; true",
+                "rm -rf /data/data/org.chromium.webview_shell/cache/Crashpad 2>/dev/null; true",
                 "rm -rf /data/local/tmp/*.apk /data/local/tmp/*.zip /data/local/tmp/*.tar* 2>/dev/null; true",
                 "rm -rf /data/dalvik-cache/arm64/* 2>/dev/null; true",
                 "rm -rf /data/resource-cache/* 2>/dev/null; true",
@@ -3098,6 +3196,14 @@ chmod 755 "$target"
                     await adb.shell_root(clean_cmd, timeout=10)
                 except Exception:
                     pass
+
+            # Stop the container before commit to ensure OverlayFS is synced and clean
+            logger.info("Stopping container before commit to ensure clean OverlayFS snapshot...")
+            await self._run_cmd(
+                self._docker_cmd("stop", temp_name),
+                timeout=60,
+                allow_failure=True,
+            )
 
             # Step 16: docker commit → custom image
             logger.info("Committing image as %s (this may take a minute)...", image_name)

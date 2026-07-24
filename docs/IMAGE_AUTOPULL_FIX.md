@@ -1,5 +1,9 @@
 # Image and APK Readiness
 
+> Part of **Damru** — the open-source, Android-native stealth browser automation framework (Redroid + Playwright + CDP) for web scraping, automation testing, and anti-bot / fingerprinting research.
+
+*Setup for Android-native browser automation on WSL2.*
+
 Status: implemented. Current users should prefer the documented CLI flow instead of manually pulling Redroid images.
 
 ## Recommended Flow
@@ -66,3 +70,14 @@ python -m damru check preflight --json --timeout 3
 - WSL Docker/binderfs/network issue: run `python -m damru fix-wsl`.
 - Worker DNS/internet issue: run `python -m damru fix-internet --all`.
 - Unsupported Debian/custom kernel: use Ubuntu 24.04 or a binderfs-enabled kernel.
+
+---
+
+## Related
+
+- [Chrome APK Bundle](../chrome-apks/README.md)
+- [Main README](../README.md)
+- [Automation Status & Roadmap](AUTOMATION_GAPS_PLAN.md)
+- [WSL2 Kernel Notes](WSL_KERNEL.md)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>

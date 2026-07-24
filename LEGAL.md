@@ -1,5 +1,9 @@
 # Damru Legal, Fork, Copy, and Commercial Use Policy
 
+> Part of **Damru** — the open-source, Android-native stealth browser automation framework (Redroid + Playwright + CDP) for web scraping, automation testing, and anti-bot / fingerprinting research.
+
+*Part of the Damru open-source browser automation project.*
+
 Damru is published under the PolyForm Noncommercial License 1.0.0. This file summarizes the project policy in plain language. The `LICENSE` file controls if there is any conflict.
 
 Official repository: https://github.com/akwin1234/damru
@@ -56,3 +60,13 @@ Commercial licenses are available for paid/business use, SaaS use, hosted servic
 ## Enforcement
 
 If a public copy violates these terms, the maintainers may request attribution fixes, license restoration, removal of copied material, removal of misleading branding, takedown of infringing assets, removal of unauthorized commercial use, GitHub abuse/impersonation reports, package registry reports, or DMCA notices where appropriate.
+
+---
+
+## Related
+
+- [Main README](README.md)
+- [Contributing Guide](CONTRIBUTING.md)
+- [Security Policy](SECURITY.md)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>

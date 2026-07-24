@@ -1,5 +1,9 @@
 #  Damru Python API Reference
 
+> Part of **Damru** — the open-source, Android-native stealth browser automation framework (Redroid + Playwright + CDP) for web scraping, automation testing, and anti-bot / fingerprinting research.
+
+*Python API for browser automation and web scraping with Damru.*
+
 Welcome to the definitive API reference for the **Damru** library. This guide covers everything from basic automation to advanced multi-container orchestration and stealth tuning.
 
 Damru is designed to be a transparent drop-in replacement for standard Playwright setups, adding deep-level Android OS and Chromium C++ spoofing.
@@ -48,6 +52,7 @@ Damru expects Redroid to run inside Ubuntu Linux or Ubuntu WSL2. On Windows, Doc
 | `http_proxy` | `str` | `None` | Android system HTTP proxy as `host:port` or `http://user:pass@host:port`. Use this when Android Chrome must route through an HTTP CONNECT proxy or local bridge. |
 | `timezone` | `str` | `None` | Force a specific IANA timezone. Leave unset so Damru resolves it from the active proxy exit. |
 | `locale` | `str` | `None` | Force a specific BCP-47 locale. Leave unset so Damru chooses a realistic locale for the proxy country. |
+| `webrtc_block` | `bool` | `True` | Default behavior drops all outgoing UDP WebRTC traffic at the kernel level via `iptables` to guarantee zero leaks. Set to `False` to enable proxy IP spoofing instead. |
 | `debug` | `bool` | `False` | Enables verbose console logging for debugging OS patches. |
 
 Proxy timezone safety:
@@ -230,7 +235,7 @@ python -m damru fix-wsl
 
 `setup` runs dependency setup by default. If no baked image is loaded and no local Chrome/WebView/TTS APK assets exist, Damru downloads and extracts the APK bundle automatically. `install-image` auto-detects and loads `damru-redroid-latest.tar`; use `python -m damru install-image --download` if the tarball is not local. The baked image already contains Chrome, WebView/TTS assets, fonts, and warm preferences, so users do not need separate APK assets unless they intentionally run an unbaked raw Redroid image.
 
-For raw image baking, APK recovery, or Chrome rotation assets, run `python -m damru install-apks --download`. It downloads the [Chrome/WebView/TTS APK bundle](https://drive.google.com/file/d/1xh5Z-LXqUIEjO08KKjhaB_89KS2pBWZq/view?usp=sharing), extracts to `/home/damru/chrome-apks` on Linux/WSL, copies Damru's shipped `magisk.apk` there when needed, then sets `CHROME_APK` only when needed. Manual Linux/WSL extraction is also valid: `sudo mkdir -p /home/damru && sudo chown "$USER:$USER" /home/damru && unzip chrome-apks.zip -d /home/damru/chrome-apks`. Keep `webview.apk` or `TrichromeWebView.apk` inside each Chrome version folder that Damru should rotate. Top-level TTS APKs remain beside the Chrome version folders, and Damru also discovers `google_tts.apk`, `espeak.apk`, `rhvoice.apk`, and the copied `magisk.apk` from the same bundle root.
+For raw image baking, APK recovery, or Chrome rotation assets, run `python -m damru install-apks --download`. It downloads the [Chrome/WebView/TTS APK bundle](https://dl.damru.dev/assets/chrome-apks.zip), extracts to `/home/damru/chrome-apks` on Linux/WSL, copies Damru's shipped `magisk.apk` there when needed, then sets `CHROME_APK` only when needed. Manual Linux/WSL extraction is also valid: `sudo mkdir -p /home/damru && sudo chown "$USER:$USER" /home/damru && unzip chrome-apks.zip -d /home/damru/chrome-apks`. Keep `webview.apk` or `TrichromeWebView.apk` inside each Chrome version folder that Damru should rotate. Top-level TTS APKs remain beside the Chrome version folders, and Damru also discovers `google_tts.apk`, `espeak.apk`, `rhvoice.apk`, and the copied `magisk.apk` from the same bundle root.
 
 Random profile actions rotate only through Chrome version folders that include a matching WebView APK. This keeps Chrome and Android WebView aligned and skips stale/incomplete folders. Chrome 149 is not included yet because tested APKMirror bundles were missing the required English/x86/x86_64 split layout. If automatic detection fails, set `CHROME_APK` to a Chrome split-APK version directory such as `/home/damru/chrome-apks/148.0.7778.178`. On Windows, extract with File Explorer/7-Zip and use the WSL path such as `/mnt/c/Users/you/Downloads/damru/chrome-apks/148.0.7778.178`.
 
@@ -347,3 +352,14 @@ Leave `timezone` and `locale` unset unless you intentionally need fixed values. 
 *   **Main Dependencies**: `playwright>=1.40,<1.60`, `requests`, `pysocks`.
 *   **Playwright Patch**: Damru ships and verifies a patched `crPage.js` file used to reduce CDP/Runtime detection surface.
 *   **Stealth Add-ons**: `curl_cffi` (highly recommended for TLS spoofing).
+
+---
+
+## Related
+
+- [Main README](../README.md)
+- [Device Profiles](DEVICE_PROFILES.md)
+- [Local UI Guide](UI.md)
+- [Viewer, Screenshots, and Video](VIEWER.md)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>

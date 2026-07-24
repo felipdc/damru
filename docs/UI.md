@@ -1,5 +1,9 @@
 # Damru Local UI
 
+> Part of **Damru** — the open-source, Android-native stealth browser automation framework (Redroid + Playwright + CDP) for web scraping, automation testing, and anti-bot / fingerprinting research.
+
+*Dashboard for the Damru browser automation framework.*
+
 Damru includes an experimental localhost dashboard for setup, worker management, manual browser inspection, screenshots, logs, gallery review, and quick troubleshooting.
 
 ```bash
@@ -166,6 +170,17 @@ Actions:
 - clear finished log records
 
 ![Damru UI logs page](assets/ui/logs.png)
+
+---
+
+## Related
+
+- [Viewer, Screenshots, and Video](VIEWER.md)
+- [Main README](../README.md)
+- [Python API Reference](PYTHON_API.md)
+- [Automation Status & Roadmap](AUTOMATION_GAPS_PLAN.md)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>
 
 ## Safety Model
 

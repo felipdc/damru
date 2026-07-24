@@ -1,5 +1,9 @@
 # Scripts
 
+> Part of **Damru** — the open-source, Android-native stealth browser automation framework (Redroid + Playwright + CDP) for web scraping, automation testing, and anti-bot / fingerprinting research.
+
+*Utility scripts for the Damru open-source browser automation framework.*
+
 Standalone maintenance utilities for Damru development, proof capture, and image preparation.
 
 ## `bake_image.py`
@@ -46,3 +50,14 @@ python scripts/socks_http_bridge.py --listen 0.0.0.0 --port 18888
 ```
 
 This helper stores no credentials; credentials come from the runtime environment.
+
+---
+
+## Related
+
+- [Browser Benchmark Report](../docs/BROWSERS_BENCHMARK_REPORT.md)
+- [Verification Proof](../docs/PROOF.md)
+- [Main README](../README.md)
+- [Image & APK Readiness](../docs/IMAGE_AUTOPULL_FIX.md)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>

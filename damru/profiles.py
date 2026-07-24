@@ -1,4 +1,4 @@
-﻿"""Profile builder for damru.
+"""Profile builder for damru.
 
 Assembles system props and Chrome CLI flags from a device profile
 + user options into a complete DamruProfile. Zero JS injection.
@@ -38,6 +38,7 @@ def build_profile(
     timezone: Optional[str] = None,
     locale: Optional[str] = None,
     chrome_version: Optional[str] = None,
+    webrtc_block: bool = True,
 ) -> DamruProfile:
     """Build a complete spoofing profile for the given device.
 
@@ -73,7 +74,7 @@ def build_profile(
         locale = resolve_locale(timezone)
 
     system_props = device.system_props()
-    chrome_flags = _build_chrome_flags(device, timezone, locale, chrome_version)
+    chrome_flags = _build_chrome_flags(device, timezone, locale, chrome_version, webrtc_block)
 
     # Randomize screen resolution for devices with WQHD+/FHD+ modes
     sw, sh, sdpi = pick_screen_variant(device)
@@ -101,6 +102,7 @@ def _build_chrome_flags(
     timezone: str,
     locale: str,
     chrome_version: Optional[str] = None,
+    webrtc_block: bool = True,
 ) -> List[str]:
     """Assemble Chrome command-line flags.
 
@@ -127,12 +129,12 @@ def _build_chrome_flags(
         "--metrics-recording-only",
         # Locale
         f"--lang={locale}",
-        # navigator.languages must NOT contain q-values — only lang tags.
+        # navigator.languages must NOT contain q-values - only lang tags.
         # Chrome auto-assigns q-weights in the HTTP Accept-Language header.
         f"--accept-lang={','.join(p.split(';')[0].strip() for p in accept_lang.split(','))}",
-        # WebRTC: keep enabled but hide private IPs (match Chrome Preferences).
-        # DO NOT use disable_non_proxied_udp — shows WebRTC as "disabled" (tell).
-        "--force-webrtc-ip-handling-policy=default_public_and_private_interfaces",
+        # WebRTC: keep enabled but force routing through proxy if webrtc_block is False (default).
+        # When webrtc_block is True, we use default policy (as iptables drops all UDP).
+        f"--force-webrtc-ip-handling-policy={'default_public_and_private_interfaces' if webrtc_block else 'disable_non_proxied_udp'}",
         "--enforce-webrtc-ip-permission-check",
         # Rendering
         "--force-color-profile=srgb",
@@ -145,6 +147,7 @@ def _build_chrome_flags(
         "--disable-background-networking",
         "--disable-client-side-phishing-detection",
         "--disable-component-update",
+        "--disable-breakpad",
         "--disable-domain-reliability",
         "--no-pings",
         # Reduce V8 heap ceiling on Android to mobile-like range.
@@ -164,7 +167,7 @@ def _build_chrome_flags(
         "--disable-gl-extensions=GL_ANGLE_polygon_mode",
     ]
 
-    # ── TLS fingerprint randomization ─────────────────────────────
+    # -- TLS fingerprint randomization -----------------------------
     # Randomize Chrome's JA3/JA4 TLS fingerprint per session by:
     # 1. Blacklisting random non-essential TLS 1.2 cipher suites
     # 2. Toggling PostQuantumKyber (changes supported_groups extension)
@@ -187,9 +190,11 @@ def _build_chrome_flags(
     # Disabled features (collected into ONE flag - Chrome only reads the LAST one)
     # NOTE: DnsOverHttps is NOT disabled - we WANT DoH through the proxy
     # to prevent DNS leak detection by BrowserScan.
-    # NOTE: WebRtcHideLocalIpsWithMdns must stay ENABLED. Real Android Chrome
-    # hides local candidates behind mDNS .local names; disabling it exposes raw
-    # private IPs and is a fingerprint tell.
+    # NOTE: WebRtcHideLocalIpsWithMdns must stay ENABLED (do NOT disable it).
+    # Real Android Chrome hides local IPs behind mDNS ".local" host candidates.
+    # Disabling it exposed the raw private IP via WebRTC (a fingerprint tell) and
+    # was only needed by the old JS candidate-rewrite spoof, which is now off by
+    # default. Keeping mDNS on makes spoof mode match real devices natively.
     disabled_features = [
         "BatteryStatus",
         "PaintHolding",
@@ -209,10 +214,10 @@ def _effective_chrome_version(chrome_version: Optional[str]) -> str:
     return "145.0.0.0"
 
 
-# ── TLS cipher suites safe to blacklist ────────────────────────
+# -- TLS cipher suites safe to blacklist ------------------------
 # These are non-essential TLS 1.2 ciphers that Chrome 145 offers.
 # Removing 1-3 per session changes the JA3 cipher suite component
-# → different JA3 hash per session.
+# ? different JA3 hash per session.
 # All are legacy (RSA key exchange or CBC mode) or optional
 # (CHACHA20 where GCM alternatives exist). Removing any subset
 # still leaves enough ciphers for all modern sites.
@@ -247,7 +252,7 @@ def _randomize_tls_flags() -> tuple:
                 num_to_blacklist, hex_list)
 
     # 2. Randomly toggle PostQuantumKyber (X25519Kyber768 key exchange).
-    #    This changes the supported_groups TLS extension → different JA3.
+    #    This changes the supported_groups TLS extension ? different JA3.
     #    ~50% chance to disable = doubles the fingerprint space.
     if random.random() < 0.5:
         extra_disabled.append("PostQuantumKyber")

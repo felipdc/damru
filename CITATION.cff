@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+title: Damru
+message: "If you use Damru in your research, please cite it using these metadata."
+type: software
+authors:
+  - name: "akwin1234"
+repository-code: "https://github.com/akwin1234/damru"
+url: "https://damru.dev"
+abstract: >-
+  Damru is an open-source, Android-native stealth browser automation framework.
+  It runs real Android (Redroid) in Docker and drives Chrome via Playwright and
+  the Chrome DevTools Protocol with OS-level fingerprint spoofing, for web
+  scraping, automation testing, and anti-bot / fingerprinting research.
+keywords:
+  - browser-automation
+  - android
+  - stealth
+  - web-scraping
+  - playwright
+  - chrome-devtools-protocol
+  - fingerprinting-research
+license: PolyForm-Noncommercial-1.0.0
+version: 0.1.0
+date-released: "2026-06-04"

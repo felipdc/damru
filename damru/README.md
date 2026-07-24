@@ -1,5 +1,9 @@
 #  Damru Core Library (`damru/`)
 
+> Part of **Damru** — the open-source, Android-native stealth browser automation framework (Redroid + Playwright + CDP) for web scraping, automation testing, and anti-bot / fingerprinting research.
+
+*Core Python library for Android-native stealth browser automation.*
+
 Welcome to the heart of the Damru framework. This directory contains the main Python source code responsible for orchestrating the entire lifecycle of the spoofing process. 
 
 Our core philosophy here is **"Zero JS Injection"**. Every spoof is executed natively or at the protocol level.
@@ -25,3 +29,14 @@ The library is modular and highly specialized:
 ---
 
 > **Note to Developers:** When modifying the core, remember to avoid relying on JavaScript-based evasions. Always look for OS-level or CDP-level solutions first.
+
+---
+
+## Related
+
+- [Main README](../README.md)
+- [Python API Reference](../docs/PYTHON_API.md)
+- [Native Binaries](../native/README.md)
+- [Automation Status & Roadmap](../docs/AUTOMATION_GAPS_PLAN.md)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>

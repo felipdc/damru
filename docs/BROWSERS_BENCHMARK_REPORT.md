@@ -1,4 +1,8 @@
-﻿# Browsers Benchmark Report
+# Browsers Benchmark Report
+
+> Part of **Damru** — the open-source, Android-native stealth browser automation framework (Redroid + Playwright + CDP) for web scraping, automation testing, and anti-bot / fingerprinting research.
+
+*Anti-bot and browser-fingerprinting benchmark results.*
 
 This report records a Damru run against the external stealth benchmark project:
 
@@ -39,7 +43,7 @@ Sanitized machine-readable result: [assets/benchmark/browsers-benchmark-final-cl
 | --- | --- |
 | CreepJS | Completed without benchmark error |
 | Sannysoft plugins | Android-correct empty `PluginArray` / empty `MimeTypeArray`; the legacy desktop plugin row is treated as a false positive only after those live invariants are verified |
-| WebRTC candidate IP | Blank, by design, to avoid non-proxy UDP IP leaks |
+| WebRTC candidate IP | Returns spoofed proxy IP (default), or empty list `[]` when `webrtc_block=True` is enabled. |
 | IP check | Completed through the configured residential proxy; exit IP redacted |
 
 ## reCAPTCHA Note
@@ -69,3 +73,14 @@ python C:\path\to\damru\scripts\run_browsers_benchmark_damru.py
 ```
 
 Use a valid residential proxy in `DAMRU_BENCH_PROXY` for proxy-mode testing. Do not commit proxy credentials or raw screenshots that expose IP addresses or site challenge tokens.
+
+---
+
+## Related
+
+- [Verification Proof](PROOF.md)
+- [Main README](../README.md)
+- [Scripts](../scripts/README.md)
+- [Device Profiles](DEVICE_PROFILES.md)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>

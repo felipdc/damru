@@ -1,4 +1,4 @@
-﻿"""Command line interface for Damru."""
+"""Command line interface for Damru."""
 from __future__ import annotations
 
 import argparse
@@ -25,11 +25,11 @@ from .apk_assets import bundled_magisk_apk, find_apk_bundle_root, validate_apk_b
 from .netfix import android_dns_repair_command, wsl_runtime_network_repair_lines, wsl_runtime_network_repair_script
 
 _DAMRU_IMAGE_TAR = "damru-redroid-latest.tar"
-_DAMRU_IMAGE_SHA256 = ""  # Set to empty; checksums verified per-download, not against a hardcoded constant
-_DAMRU_IMAGE_URL = "https://damru.dev/assets/damru-baked.tar.gz"
+_DAMRU_IMAGE_SHA256 = "f5c1a32adfb16b2819a22b524d4f22b2563d902cf725023e3de5606746c1b9aa"  # Set to the new baked image checksum
+_DAMRU_IMAGE_URL = "https://dl.damru.dev/assets/damru-baked.tar.gz"
 _DAMRU_APKS_ZIP = "chrome-apks.zip"
-_DAMRU_APKS_URL = "https://damru.dev/assets/chrome-apks.zip"
-_DAMRU_APKS_MIRROR_URL = "https://damru.dev/assets/chrome-apks.zip"
+_DAMRU_APKS_URL = "https://dl.damru.dev/assets/chrome-apks.zip"
+_DAMRU_APKS_MIRROR_URL = "https://dl.damru.dev/assets/chrome-apks.zip"
 _CHROME_APK_AUTO_SKIP_VERSIONS: set[str] = set()
 
 
@@ -1918,48 +1918,7 @@ def _find_image_tar(explicit: str | None = None) -> Path | None:
             return path.resolve()
     return None
 
-def _download_google_drive_file(url: str, target: Path) -> None:
-    import requests
-
-    file_id_match = re.search(r"/d/([^/]+)/", url) or re.search(r"[&]id=([^&]+)", url)
-    if not file_id_match:
-        raise RuntimeError("unsupported Drive URL; pass --url with a Google Drive file link")
-    session = requests.Session()
-    response = session.get(
-        "https://drive.google.com/uc",
-        params={"export": "download", "id": file_id_match.group(1)},
-        stream=True,
-        timeout=60,
-    )
-    token = next((value for key, value in response.cookies.items() if key.startswith("download_warning")), None)
-    if token:
-        response.close()
-        response = session.get(
-            "https://drive.google.com/uc",
-            params={"export": "download", "id": file_id_match.group(1), "confirm": token},
-            stream=True,
-            timeout=60,
-        )
-    response.raise_for_status()
-
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(target.suffix + ".part")
-    downloaded = 0
-    with tmp.open("wb") as fh:
-        for chunk in response.iter_content(chunk_size=1024 * 1024):
-            if not chunk:
-                continue
-            fh.write(chunk)
-            downloaded += len(chunk)
-            if downloaded and downloaded % (100 * 1024 * 1024) < 1024 * 1024:
-                print(f"Downloaded {downloaded // (1024 * 1024)} MB...")
-    tmp.replace(target)
-
 def _download_file(url: str, target: Path) -> None:
-    if "drive.google.com" in url:
-        _download_google_drive_file(url, target)
-        return
-
     import requests
 
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -1994,6 +1953,7 @@ def _install_image(args: argparse.Namespace) -> int:
             searched = "\n  ".join(str(p) for p in _candidate_image_tars(args.tar))
             print(f"Could not find {_DAMRU_IMAGE_TAR}. Searched:\n  {searched}", file=sys.stderr)
             print("Place the tarball there or run: python -m damru install-image --download", file=sys.stderr)
+            print(f"Direct download URL: {args.url}", file=sys.stderr)
             return 1
         target = Path(args.output or (Path.cwd() / _DAMRU_IMAGE_TAR)).expanduser().resolve()
         print(f"Downloading baked image to {target}")
@@ -2035,9 +1995,10 @@ def _candidate_apk_zips(explicit: str | None = None) -> list[Path]:
     candidates: list[Path] = []
     if explicit:
         candidates.append(Path(explicit).expanduser())
-    for root in (Path.cwd(), Path.cwd().parent, _repo_root(), _repo_root().parent, Path.home(), Path.home() / "Downloads"):
+    for root in (Path.cwd(), Path.cwd().parent, _repo_root(), _repo_root().parent, Path.home(), Path.home() / "Downloads", Path.home() / "Downloads" / "damru"):
         for name in names:
             candidates.append(root / name)
+            candidates.append(root / "chrome-apks" / name)
     seen: set[str] = set()
     unique: list[Path] = []
     for path in candidates:
@@ -2061,7 +2022,12 @@ def _chrome_apk_version_dirs(root: Path) -> list[Path]:
 def _preferred_chrome_apk_version_dir(version_dirs: list[Path]) -> Path | None:
     if not version_dirs:
         return None
-    compatible = [p for p in version_dirs if p.name not in _CHROME_APK_AUTO_SKIP_VERSIONS]
+    compatible = [
+        p for p in version_dirs
+        if p.name not in _CHROME_APK_AUTO_SKIP_VERSIONS
+        and not p.name.startswith("145.")
+        and not p.name.startswith("146.")
+    ]
     candidates = compatible or version_dirs
     # Prefer the latest version that has a matching webview.apk inside
     _WEBVIEW_NAMES = {'webview.apk', 'trichromewebview.apk'}
@@ -2228,7 +2194,7 @@ def _random_profile(args: argparse.Namespace) -> int:
         from .chrome import ChromeManager
         from .devices import get_random_device
         from .docker import RedroidManager
-        from .profiles import _build_chrome_flags, build_profile
+        from .profiles import build_profile
         from .proxy import build_accept_language
         from .root import RootOps
 
@@ -2246,7 +2212,13 @@ def _random_profile(args: argparse.Namespace) -> int:
         current_http_proxy = (current_http_proxy or "").strip()
         if current_http_proxy in {"", "null", ":0"}:
             current_http_proxy = None
-        profile = build_profile(device, proxy=explicit_proxy, http_proxy=current_http_proxy)
+        webrtc_block = not getattr(args, "webrtc_spoof", False)
+        profile = build_profile(
+            device,
+            proxy=explicit_proxy,
+            http_proxy=current_http_proxy,
+            webrtc_block=webrtc_block,
+        )
         root = RootOps(adb)
         await root.check_root()
         chrome = ChromeManager(adb)
@@ -2293,11 +2265,13 @@ def _random_profile(args: argparse.Namespace) -> int:
         await adb.shell(f"wm size {profile.screen_width}x{profile.screen_height}", allow_failure=True)
         await adb.shell(f"wm density {profile.density_dpi}", allow_failure=True)
         accept_lang = build_accept_language(profile.locale)
+        from .profiles import _build_chrome_flags
         profile.chrome_flags = _build_chrome_flags(
             device,
             profile.timezone,
             profile.locale,
             installed_chrome or current_chrome,
+            webrtc_block,
         )
         await chrome.write_command_line(profile.chrome_flags)
         await chrome.patch_preferences(profile.locale, accept_lang)
@@ -2312,7 +2286,7 @@ def _random_profile(args: argparse.Namespace) -> int:
                 user_agent=_build_webview_user_agent(device, installed_chrome or current_chrome),
             )
             await chrome.patch_webview_preferences(profile.locale, accept_lang, WEBVIEW_SHELL_PACKAGE)
-        if applied_proxy:
+        if applied_proxy and webrtc_block:
             await asyncio.gather(
                 root.apply_webrtc_block(chrome.package),
                 root.apply_webrtc_block(WEBVIEW_SHELL_PACKAGE),
@@ -2356,6 +2330,7 @@ def _force_profile(args: argparse.Namespace) -> int:
             apply_gpu=not getattr(args, "no_gpu", False),
             apply_memory=not getattr(args, "no_memory", False),
             clear_proxy=getattr(args, "clear_proxy", False),
+            webrtc_block=not getattr(args, "webrtc_spoof", False),
         )
 
     try:
@@ -2559,7 +2534,8 @@ def _open_url(args: argparse.Namespace) -> int:
     except Exception as exc:
         print(f"Proxy setup failed: {exc}", file=sys.stderr)
         return 1
-    if system_proxy:
+    webrtc_block = not getattr(args, "webrtc_spoof", False)
+    if system_proxy and webrtc_block:
         try:
             _apply_webrtc_block_sync(serial, package)
         except Exception as exc:
@@ -2674,6 +2650,7 @@ def _stealth_open_url(args: argparse.Namespace) -> int:
             keep_chrome_on_exit=True,
             force_cold_start=bool(getattr(args, "cold_start", False)),
             debug=getattr(args, "debug", False),
+            webrtc_block=not getattr(args, "webrtc_spoof", False),
         )
         context = await damru.__aenter__()
         try:
@@ -2812,7 +2789,7 @@ def _quick_stealth_check(args: argparse.Namespace) -> int:
     checks = {
         "adb_online": _run_adb_text(serial, "get-state", timeout=8).stdout.strip() == "device",
         "boot_completed": prop("sys.boot_completed") == "1",
-        "chrome_installed": _chrome_package_installed(serial, "com.android.chrome"),
+        "chrome_installed": _chrome_package_installed(serial, "com.android.chrome") or _chrome_package_installed(serial, "com.android.chromium"),
         "dns_present": _android_dns_present(serial),
         "timezone_present": bool(prop("persist.sys.timezone")),
         "locale_present": bool(prop("persist.sys.locale") or prop("persist.sys.language")),
@@ -3067,7 +3044,7 @@ def build_parser() -> argparse.ArgumentParser:
     install_image = sub.add_parser("install-image", help="load or download the baked Damru Redroid image")
     install_image.add_argument("--tar", default=None, help="path to damru-redroid-latest.tar; auto-detected when omitted")
     install_image.add_argument("--download", action="store_true", help="download the image tarball if it is not found locally")
-    install_image.add_argument("--url", default=_DAMRU_IMAGE_URL, help="Google Drive image URL used with --download")
+    install_image.add_argument("--url", default=_DAMRU_IMAGE_URL, help="direct HTTPS image URL used with --download (default: dl.damru.dev)")
     install_image.add_argument("--output", default=None, help="download target path; default is ./damru-redroid-latest.tar")
     install_image.set_defaults(func=_install_image)
 
@@ -3099,6 +3076,7 @@ def build_parser() -> argparse.ArgumentParser:
     random_profile.add_argument("--proxy", default=None, help="proxy URL used for geo/timezone/locale and Android HTTP proxy")
     random_profile.add_argument("--http-proxy", default=None, help="explicit Android HTTP proxy host:port or URL")
     random_profile.add_argument("--chrome-version", default=None, help="force a Chrome/WebView APK version from chrome-apks/<version>; default is random")
+    random_profile.add_argument("--webrtc-spoof", action="store_true", help="spoof WebRTC IP through proxy instead of dropping UDP at kernel level (webrtc_block=True by default)")
     random_profile.set_defaults(func=_random_profile)
 
     force_profile = sub.add_parser("force-profile", help="apply a named stealth profile to an ADB worker")
@@ -3121,6 +3099,7 @@ def build_parser() -> argparse.ArgumentParser:
     force_profile.add_argument("--no-gpu", action="store_true", help="skip native Vulkan GPU spoofing")
     force_profile.add_argument("--no-memory", action="store_true", help="skip native memory preload spoofing")
     force_profile.add_argument("--clear-proxy", action="store_true", help="clear Android system HTTP proxy instead of preserving it")
+    force_profile.add_argument("--webrtc-spoof", action="store_true", help="spoof WebRTC IP through proxy instead of dropping UDP at kernel level (webrtc_block=True by default)")
     force_profile.set_defaults(func=_force_profile)
 
     stealth_all = sub.add_parser("ui-stealth-check-all", help=argparse.SUPPRESS)
@@ -3144,6 +3123,7 @@ def build_parser() -> argparse.ArgumentParser:
     open_url.add_argument("--package", default="com.android.chrome", help="browser package to launch; default is Chrome")
     open_url.add_argument("--proxy", default=None, help="HTTP/SOCKS proxy URL; HTTP endpoint is applied to Android before navigation")
     open_url.add_argument("--http-proxy", default=None, help="explicit Android HTTP proxy host:port or URL")
+    open_url.add_argument("--webrtc-spoof", action="store_true", help="spoof WebRTC IP through proxy instead of dropping UDP at kernel level (webrtc_block=True by default)")
     open_url.set_defaults(func=_open_url)
 
     stealth_open_url = sub.add_parser("stealth-open-url", help="open a URL through a full Damru stealth session")
@@ -3170,6 +3150,7 @@ def build_parser() -> argparse.ArgumentParser:
     stealth_open_url.set_defaults(cold_start=False)
     stealth_open_url.add_argument("--settle-ms", type=int, default=3000, help="milliseconds to wait after navigation before leaving Chrome open")
     stealth_open_url.add_argument("--debug", action="store_true", help="enable debug logging")
+    stealth_open_url.add_argument("--webrtc-spoof", action="store_true", help="spoof WebRTC IP through proxy instead of dropping UDP at kernel level (webrtc_block=True by default)")
     stealth_open_url.set_defaults(func=_stealth_open_url)
 
     record = sub.add_parser("record", help="record a short MP4 video from an ADB device")
@@ -3198,6 +3179,7 @@ def build_parser() -> argparse.ArgumentParser:
     viewer.set_defaults(func=_install_viewer)
 
     ui = sub.add_parser("ui", help="open the local Damru web control panel")
+    ui.add_argument("--host", default="127.0.0.1", help="host address to bind the UI server to")
     ui.add_argument("--port", type=int, default=8765, help="localhost port for the UI")
     ui.add_argument("--no-open", action="store_true", help="do not open a browser automatically")
     ui.set_defaults(func=_ui)
@@ -3220,7 +3202,7 @@ def main(argv: list[str] | None = None) -> int:
 def _ui(args: argparse.Namespace) -> int:
     from .ui.server import run_ui
 
-    return run_ui(port=args.port, open_browser=not args.no_open)
+    return run_ui(host=args.host, port=args.port, open_browser=not args.no_open)
 
 
 def _ui_worker(args: argparse.Namespace) -> int:

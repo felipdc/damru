@@ -1,5 +1,9 @@
 # Damru Verification Proof
 
+> Part of **Damru** — the open-source, Android-native stealth browser automation framework (Redroid + Playwright + CDP) for web scraping, automation testing, and anti-bot / fingerprinting research.
+
+*Anti-bot and browser-fingerprinting benchmark results.*
+
 Date: 2026-06-04
 
 This file records sanitized local verification results. It intentionally does not include private proxy credentials, local usernames, local IP addresses, SSH details, or machine-specific secrets.
@@ -146,3 +150,14 @@ Chrome 149 APKs are not included yet because tested public bundles were missing 
 ## Asset Hygiene
 
 The proof run used a private proxy only at runtime. The committed screenshots, video, and JSON do not contain proxy credentials, SSH credentials, local usernames, local IP addresses, or VPS connection details.
+
+---
+
+## Related
+
+- [Browser Benchmark Report](BROWSERS_BENCHMARK_REPORT.md)
+- [Main README](../README.md)
+- [Device Profiles](DEVICE_PROFILES.md)
+- [WSL2 Kernel Notes](WSL_KERNEL.md)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>

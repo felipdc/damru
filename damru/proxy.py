@@ -348,12 +348,20 @@ def resolve_proxy_geo(proxy: str, retries: int = 3, use_cache: bool = False) -> 
         "ip": "",
     }
 
-    # GeoIP endpoints - HTTPS first (HTTP CONNECT proxy tunnels HTTPS fine,
-    # but can't proxy plain HTTP). Fallback to HTTP for SOCKS5 proxies.
+    # GeoIP endpoints. ip-api.com is MaxMind-derived — the same family of data
+    # most anti-bot/VPN-detectors (incl. Fingerprint Pro) use — so its timezone
+    # is the one least likely to mismatch the detector's IP→timezone lookup
+    # (which is what triggers a "VPN (timezone mismatch)" flag). Prefer it first,
+    # then fall back to ipinfo.io and ipapi.co (the latter aggressively rate-
+    # limits with HTTP 429, causing inconsistent timezones across sessions).
+    # NOTE: ip-api free tier is HTTP-only — works through SOCKS5 (socks5h) and
+    # through Chrome's proxied path; HTTPS-CONNECT-only proxies fall back below.
+    # The URL needs '?' before 'fields=' (the old '/json/fields=' form made
+    # ip-api treat the query string as the IP to look up and return junk).
     _ENDPOINTS = [
-        ("https://ipapi.co/json/", lambda d: (d.get("timezone"), d.get("country_code"), d.get("ip"))),
+        ("http://ip-api.com/json/?fields=status,query,timezone,countryCode", lambda d: (d.get("timezone"), d.get("countryCode"), d.get("query"))),
         ("https://ipinfo.io/json", lambda d: (d.get("timezone"), d.get("country"), d.get("ip"))),
-        ("http://ip-api.com/json/fields=query,timezone,countryCode", lambda d: (d.get("timezone"), d.get("countryCode"), d.get("query"))),
+        ("https://ipapi.co/json/", lambda d: (d.get("timezone"), d.get("country_code"), d.get("ip"))),
     ]
 
     try:

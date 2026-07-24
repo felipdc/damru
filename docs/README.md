@@ -1,5 +1,9 @@
 #  Documentation (`docs/`)
 
+> Part of **Damru** — the open-source, Android-native stealth browser automation framework (Redroid + Playwright + CDP) for web scraping, automation testing, and anti-bot / fingerprinting research.
+
+*Documentation index for the Damru open-source browser automation framework.*
+
 Welcome to the Damru knowledge base. This directory holds project documentation, architecture plans, roadmaps, and research notes.
 
 ---
@@ -23,3 +27,34 @@ Welcome to the Damru knowledge base. This directory holds project documentation,
 *   **`CONTRIBUTING.md`**: Guidelines for contributing to the Damru ecosystem.
 
 Keep this index focused on current user-facing docs. Historical notes should clearly say when they are no longer the recommended setup path.
+
+---
+
+## FAQ
+
+**What is Damru?**
+Damru is the first open-source, Android-native browser automation framework — it runs real Android (Redroid) in Docker and drives Chrome via the Chrome DevTools Protocol (CDP) with OS-level fingerprint spoofing, for authorized web scraping, automation testing, and anti-bot / fingerprinting research.
+
+**Which platforms are supported?**
+Ubuntu 24.04 LTS is the only officially supported host — both native Linux and Ubuntu WSL2 with Damru's bundled WSL kernel pass all smoke tests. Debian 13 kernels currently lack `CONFIG_ANDROID_BINDERFS`, so they are not supported for Redroid multi-container pools.
+
+**Does Damru use JavaScript injection for spoofing?**
+No. Damru's "Zero JS Injection" approach applies all spoofing at the OS level (resetprop, iptables), binary level (Vulkan/GLES patching), and protocol level (CDP). No `Object.defineProperty` hacks are used, eliminating the most detectable fingerprinting vector.
+
+**How do I get started?**
+Install with `pip install git+https://github.com/akwin1234/damru.git`, then run `python -m damru setup` for guided first-run configuration. See [PYTHON_API.md](PYTHON_API.md) for the full API reference and the main README for the step-by-step deployment guide.
+
+**What anti-bot systems has Damru bypassed in documented tests?**
+Damru achieved a 10/10 (100%) bypass rate against Google Search, Cloudflare, DataDome, Amazon, Ticketmaster/Imperva, Akamai, PerimeterX/HUMAN, Kasada, and Reddit. Full results are in the [Browser Benchmark Report](BROWSERS_BENCHMARK_REPORT.md).
+
+---
+
+## Related
+
+- [Python API Reference](PYTHON_API.md)
+- [Verification Proof](PROOF.md)
+- [Browser Benchmark Report](BROWSERS_BENCHMARK_REPORT.md)
+- [Device Profiles](DEVICE_PROFILES.md)
+- [Automation Status & Roadmap](AUTOMATION_GAPS_PLAN.md)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>

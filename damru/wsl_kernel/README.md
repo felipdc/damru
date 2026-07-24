@@ -1,4 +1,8 @@
-﻿# Bundled WSL Kernel Artifact
+# Bundled WSL Kernel Artifact
+
+> Part of **Damru** — the open-source, Android-native stealth browser automation framework (Redroid + Playwright + CDP) for web scraping, automation testing, and anti-bot / fingerprinting research.
+
+*Custom WSL2 kernel for Android-native browser automation on Windows.*
 
 This directory contains the locally verified WSL2 kernel artifact used for Damru Redroid on WSL.
 
@@ -36,3 +40,14 @@ Source metadata:
 - `source_metadata/damru-wsl-kernel-nat-build.info`: source path, size, active kernel, and git metadata captured from WSL.
 
 The full WSL kernel source tree was not copied into this repository because the local build tree is about 15 GB. The exact kernel config and installed binary are preserved here.
+
+---
+
+## Related
+
+- [WSL2 Kernel Notes](../../docs/WSL_KERNEL.md)
+- [Main README](../../README.md)
+- [WSL Fallback Test Results](../../docs/WSL_FALLBACK_TEST_RESULTS.md)
+- [Verification Proof](../../docs/PROOF.md)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>

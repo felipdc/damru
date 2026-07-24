@@ -553,9 +553,15 @@ async def test_apply_gpu_binary_spoof_skips_restart_when_renderer_already_patche
 
 
 @pytest.mark.unit
-async def test_apply_gpu_binary_spoof_rejects_cross_family_repatch() -> None:
+async def test_apply_gpu_binary_spoof_allows_cross_family_repatch(monkeypatch) -> None:
     class FakeADB:
+        serial = "127.0.0.1:5600"
+        shell_commands: list[str] = []
+        shell_root_commands: list[str] = []
+        run_commands: list[list[str]] = []
+
         async def shell(self, command: str, *args, **kwargs) -> str:
+            self.shell_commands.append(command)
             if command.startswith("test -f /vendor/lib64/hw/vulkan.pastel.so"):
                 return "OK\n"
             if command.startswith("cat /data/local/tmp/damru_gpu_binary_spoof.json"):
@@ -568,10 +574,36 @@ async def test_apply_gpu_binary_spoof_rejects_cross_family_repatch() -> None:
                         "gpu_family": "adreno",
                     }
                 )
+            if command.startswith("pm path android"):
+                return "package:/system/framework/framework-res.apk\n"
+            if "id" in command:
+                return "uid=0\n"
             return ""
 
         async def shell_root(self, command: str, *args, **kwargs) -> str:
-            raise AssertionError("cross-family GPU patch should fail before root writes")
+            self.shell_root_commands.append(command)
+            return ""
 
-    with pytest.raises(RootError, match="already patched for adreno"):
-        await RootOps(FakeADB()).apply_gpu_binary_spoof(get_device("samsung_galaxy_a35"))
+        async def _run(self, cmd: list[str], *args, **kwargs) -> str:
+            self.run_commands.append(cmd)
+            return ""
+
+    adb = FakeADB()
+    device = get_device("samsung_galaxy_a35")  # Mali GPU
+
+    patched_called = []
+    async def fake_binary_patch_so(*args, **kwargs):
+        patched_called.append(args)
+        return True
+
+    ops = RootOps(adb)
+    monkeypatch.setattr(ops, "_binary_patch_so", fake_binary_patch_so)
+
+    await ops.apply_gpu_binary_spoof(device)
+
+    assert len(patched_called) == 1
+    assert any("remount,rw" in cmd for cmd in adb.shell_commands)
+    assert any("remount,ro" in cmd for cmd in adb.shell_commands)
+    assert any("ctl.restart surfaceflinger" in cmd for cmd in adb.shell_root_commands)
+    assert any("damru_gpu_binary_spoof.json" in cmd for cmd in adb.shell_root_commands)
+

@@ -1,10 +1,14 @@
 # Contributing to Damru
 
+> Part of **Damru** — the open-source, Android-native stealth browser automation framework (Redroid + Playwright + CDP) for web scraping, automation testing, and anti-bot / fingerprinting research.
+
+*Part of the Damru open-source browser automation project.*
+
 Thank you for considering a contribution to Damru.
 
 ## AI-Assisted Development
 
-Damru was built with heavy AI-assisted engineering and rapid experimentation. The project has used OpenAI Codex, Claude Code, Kimi CLI, and other tools during research, native patching, and integration work.
+Damru was built with heavy AI-assisted engineering and rapid experimentation. The project has used OpenAI Codex, Kimi CLI, and other tools during research, native patching, and integration work.
 
 AI-generated patches are welcome, but contributors are responsible for testing, reviewing, and understanding the code before submitting it.
 
@@ -48,3 +52,15 @@ python -m damru check-env
 ## License
 
 By contributing, you agree that your contribution is provided under the same license and project policy as Damru. See `LICENSE` and `LEGAL.md`.
+
+---
+
+## Related
+
+- [Main README](README.md)
+- [Legal Policy](LEGAL.md)
+- [Security Policy](SECURITY.md)
+- [Python API Reference](docs/PYTHON_API.md)
+- [Test Suite](tests/README.md)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>

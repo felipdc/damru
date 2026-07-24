@@ -1,5 +1,9 @@
 # Damru Viewer, Screenshots, and Video
 
+> Part of **Damru** — the open-source, Android-native stealth browser automation framework (Redroid + Playwright + CDP) for web scraping, automation testing, and anti-bot / fingerprinting research.
+
+*Dashboard for the Damru browser automation framework.*
+
 Damru normally runs headless. Visual tooling is optional and must be launched explicitly so normal stealth automation does not open windows or send manual input events.
 
 ## Local UI Viewer
@@ -56,3 +60,14 @@ Screenshots and video recordings use ADB commands, not Playwright page screensho
 - `screenshot` captures the whole Android display with `adb exec-out screencap -p`.
 - `record` captures a bounded Android display video with `adb shell screenrecord` and pulls the MP4 locally.
 - Android `screenrecord` is limited to 180 seconds per recording.
+
+---
+
+## Related
+
+- [Local UI Guide](UI.md)
+- [Main README](../README.md)
+- [Verification Proof](PROOF.md)
+- [Automation Status & Roadmap](AUTOMATION_GAPS_PLAN.md)
+
+<sub>Keywords: Android browser automation · stealth automation · antidetect · web scraping · Redroid · Playwright · CDP · fingerprinting research</sub>
