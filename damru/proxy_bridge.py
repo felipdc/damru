@@ -10,6 +10,8 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
+from pathlib import Path
 import select
 import socket
 import socketserver
@@ -67,7 +69,7 @@ def _inject_proxy_auth(headers: bytes, auth_header: str | None) -> bytes:
     return b"\r\n".join([*kept, auth_header.rstrip("\r\n").encode("ascii")]) + sep + body
 
 
-def _relay(left: socket.socket, right: socket.socket) -> None:
+def _relay(left: socket.socket, right: socket.socket, transferred=None) -> None:
     sockets = [left, right]
     while True:
         readable, _, _ = select.select(sockets, [], [], 300)
@@ -79,6 +81,65 @@ def _relay(left: socket.socket, right: socket.socket) -> None:
             if not data:
                 return
             dst.sendall(data)
+            if transferred is not None:
+                transferred('upstream_bytes' if src is left else 'downstream_bytes', len(data))
+
+
+def _target_host(first_line: str) -> str:
+    method, target, _ = first_line.split(' ', 2)
+    parsed = urlparse('//'+target if method.upper() == 'CONNECT' else target)
+    if not parsed.hostname:
+        raise OSError('Proxy request missing target hostname')
+    return parsed.hostname.lower().rstrip('.')
+
+
+def _domain_matches(host: str, domain: str) -> bool:
+    domain = domain.strip().lower().lstrip('.').rstrip('.')
+    return bool(domain) and (host == domain or host.endswith('.'+domain))
+
+
+class TrafficPolicy:
+    """Optional host-only filtering and counters; never logs URLs or credentials.
+
+    Read policy for each new connection so an atomic file replacement can run a
+    controlled A/B test without changing a proxy session. Existing tunnels are
+    unaffected. Invalid configured policy fails that connection before egress.
+    """
+    def __init__(self, policy_file=None, metrics_dir=None):
+        self.policy_file = Path(policy_file) if policy_file else None
+        self.metrics_dir = Path(metrics_dir) if metrics_dir else None
+
+    def decision(self, host: str) -> tuple[bool, str]:
+        if self.policy_file is None:
+            return False, 'disabled'
+        policy = json.loads(self.policy_file.read_text())
+        if not isinstance(policy, dict):
+            raise ValueError('Traffic policy must be an object')
+        blocked = policy.get('blocked_domains', [])
+        allowed = policy.get('allowed_domains', [])
+        if not all(isinstance(items, list) and all(isinstance(x, str) for x in items) for items in (blocked, allowed)):
+            raise ValueError('Traffic policy domains must be string lists')
+        label = str(policy.get('name', 'custom'))[:80]
+        if any(_domain_matches(host, domain) for domain in allowed):
+            return False, label
+        return any(_domain_matches(host, domain) for domain in blocked), label
+
+    def record(self, value: dict) -> None:
+        if self.metrics_dir is None:
+            return
+        try:
+            self.metrics_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+            path = self.metrics_dir / (time.strftime('%Y-%m-%d', time.gmtime())+'.jsonl')
+            # One append per record across bridge processes. Only hostname,
+            # decision and byte counts; no request paths, headers or bodies.
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            try:
+                os.write(fd, (json.dumps(value, separators=(',', ':'))+'\n').encode())
+            finally:
+                os.close(fd)
+        except OSError:
+            # A diagnostics disk error must not alter capture behavior.
+            pass
 
 
 def _socks5_connect(upstream: Upstream, target_host: str, target_port: int) -> socket.socket:
@@ -150,6 +211,10 @@ class BridgeHandler(socketserver.BaseRequestHandler):
 
     def handle(self) -> None:
         server = self.server
+        policy = getattr(server, 'traffic_policy', None) or TrafficPolicy()
+        metrics = {'started_at': time.time(), 'upstream_bytes': 0, 'downstream_bytes': 0}
+        def transferred(direction, size):
+            metrics[direction] += size
         connection_started = getattr(server, "connection_started", None)
         connection_finished = getattr(server, "connection_finished", None)
         if connection_started is not None:
@@ -162,32 +227,49 @@ class BridgeHandler(socketserver.BaseRequestHandler):
                 return
             first = headers.split(b"\r\n", 1)[0].decode("latin1", errors="replace")
             method = first.split(" ", 1)[0].upper()
+            host = _target_host(first)
+            blocked, label = policy.decision(host)
+            metrics.update(host=host, policy=label, blocked=blocked)
+            if blocked:
+                # Refuse CONNECT before opening the authenticated paid proxy.
+                client.sendall(b'HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n')
+                return
 
             if self.upstream.scheme in {"socks5", "socks5h"}:
                 upstream = _connect_target_via_upstream(self.upstream, first)
                 with upstream:
                     if method == "CONNECT":
                         client.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
-                        _relay(client, upstream)
+                        _relay(client, upstream, transferred)
                         return
                     upstream.sendall(headers)
-                    _relay(client, upstream)
+                    transferred('upstream_bytes', len(headers))
+                    _relay(client, upstream, transferred)
                     return
 
             with socket.create_connection((self.upstream.host, self.upstream.port), timeout=30) as upstream:
                 upstream.settimeout(30)
                 if method == "CONNECT":
-                    upstream.sendall(_inject_proxy_auth(headers, self.upstream.auth_header))
+                    authenticated = _inject_proxy_auth(headers, self.upstream.auth_header)
+                    upstream.sendall(authenticated)
+                    transferred('upstream_bytes', len(authenticated))
                     response = _recv_headers(upstream)
+                    transferred('downstream_bytes', len(response))
                     client.sendall(response)
                     if b" 200 " not in response.split(b"\r\n", 1)[0]:
                         return
-                    _relay(client, upstream)
+                    _relay(client, upstream, transferred)
                     return
 
-                upstream.sendall(_inject_proxy_auth(headers, self.upstream.auth_header))
-                _relay(client, upstream)
+                authenticated = _inject_proxy_auth(headers, self.upstream.auth_header)
+                upstream.sendall(authenticated)
+                transferred('upstream_bytes', len(authenticated))
+                _relay(client, upstream, transferred)
         finally:
+            if 'host' in metrics:
+                metrics['finished_at'] = time.time()
+                metrics['bridge_port'] = server.server_address[1]
+                policy.record(metrics)
             if connection_finished is not None:
                 connection_finished()
 
@@ -260,6 +342,10 @@ def main(argv: list[str] | None = None) -> int:
         BridgeHandler,
         idle_timeout_seconds=idle_timeout_seconds,
     ) as server:
+        server.traffic_policy = TrafficPolicy(
+            config.get('policy_file') or os.environ.get('DAMRU_PROXY_POLICY_FILE'),
+            config.get('metrics_dir') or os.environ.get('DAMRU_PROXY_METRICS_DIR'),
+        )
         print(
             f"damru proxy bridge listening on {host}:{port} -> {upstream.host}:{upstream.port} "
             f"(idle timeout: {idle_timeout_seconds:g}s)",
