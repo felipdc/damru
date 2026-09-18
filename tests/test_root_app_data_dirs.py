@@ -607,3 +607,17 @@ async def test_apply_gpu_binary_spoof_allows_cross_family_repatch(monkeypatch) -
     assert any("ctl.restart surfaceflinger" in cmd for cmd in adb.shell_root_commands)
     assert any("damru_gpu_binary_spoof.json" in cmd for cmd in adb.shell_root_commands)
 
+
+
+def test_native_prebuilt_requires_matching_checksum(tmp_path, monkeypatch):
+    import hashlib
+    from damru.root import RootOps, RootError
+    import pytest
+    asset = tmp_path / 'prebuilt.so'
+    asset.write_bytes(b'known-native-library')
+    monkeypatch.setenv('DAMRU_NATIVE_PREBUILT_PATH', str(asset))
+    monkeypatch.setenv('DAMRU_NATIVE_PREBUILT_SHA256', hashlib.sha256(asset.read_bytes()).hexdigest())
+    assert RootOps._compile_fakemem() == str(asset)
+    monkeypatch.setenv('DAMRU_NATIVE_PREBUILT_SHA256', 'bad')
+    with pytest.raises(RootError):
+        RootOps._compile_fakemem()

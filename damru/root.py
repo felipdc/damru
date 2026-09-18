@@ -2447,6 +2447,13 @@ echo damru_app_data_dirs_created=$created
         Uses gcc in WSL2 (Windows) or native gcc (Linux).
         Result is cached - only compiles once.
         """
+        prebuilt = os.environ.get("DAMRU_NATIVE_PREBUILT_PATH")
+        if prebuilt:
+            expected = os.environ.get("DAMRU_NATIVE_PREBUILT_SHA256", "")
+            actual = hashlib.sha256(Path(prebuilt).read_bytes()).hexdigest()
+            if not expected or actual != expected:
+                raise RootError("Pinned native preload checksum mismatch")
+            return prebuilt
         repo_native_dir = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "native"
         )

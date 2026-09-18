@@ -14,6 +14,8 @@ import select
 import socket
 import socketserver
 import sys
+import threading
+import time
 from dataclasses import dataclass
 from urllib.parse import unquote, urlparse
 
@@ -147,43 +149,99 @@ class BridgeHandler(socketserver.BaseRequestHandler):
     upstream: Upstream
 
     def handle(self) -> None:
-        client = self.request
-        client.settimeout(30)
-        headers = _recv_headers(client)
-        if not headers:
-            return
-        first = headers.split(b"\r\n", 1)[0].decode("latin1", errors="replace")
-        method = first.split(" ", 1)[0].upper()
+        server = self.server
+        connection_started = getattr(server, "connection_started", None)
+        connection_finished = getattr(server, "connection_finished", None)
+        if connection_started is not None:
+            connection_started()
+        try:
+            client = self.request
+            client.settimeout(30)
+            headers = _recv_headers(client)
+            if not headers:
+                return
+            first = headers.split(b"\r\n", 1)[0].decode("latin1", errors="replace")
+            method = first.split(" ", 1)[0].upper()
 
-        if self.upstream.scheme in {"socks5", "socks5h"}:
-            upstream = _connect_target_via_upstream(self.upstream, first)
-            with upstream:
-                if method == "CONNECT":
-                    client.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
+            if self.upstream.scheme in {"socks5", "socks5h"}:
+                upstream = _connect_target_via_upstream(self.upstream, first)
+                with upstream:
+                    if method == "CONNECT":
+                        client.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
+                        _relay(client, upstream)
+                        return
+                    upstream.sendall(headers)
                     _relay(client, upstream)
                     return
-                upstream.sendall(headers)
-                _relay(client, upstream)
-                return
 
-        with socket.create_connection((self.upstream.host, self.upstream.port), timeout=30) as upstream:
-            upstream.settimeout(30)
-            if method == "CONNECT":
-                upstream.sendall(_inject_proxy_auth(headers, self.upstream.auth_header))
-                response = _recv_headers(upstream)
-                client.sendall(response)
-                if b" 200 " not in response.split(b"\r\n", 1)[0]:
+            with socket.create_connection((self.upstream.host, self.upstream.port), timeout=30) as upstream:
+                upstream.settimeout(30)
+                if method == "CONNECT":
+                    upstream.sendall(_inject_proxy_auth(headers, self.upstream.auth_header))
+                    response = _recv_headers(upstream)
+                    client.sendall(response)
+                    if b" 200 " not in response.split(b"\r\n", 1)[0]:
+                        return
+                    _relay(client, upstream)
                     return
-                _relay(client, upstream)
-                return
 
-            upstream.sendall(_inject_proxy_auth(headers, self.upstream.auth_header))
-            _relay(client, upstream)
+                upstream.sendall(_inject_proxy_auth(headers, self.upstream.auth_header))
+                _relay(client, upstream)
+        finally:
+            if connection_finished is not None:
+                connection_finished()
 
 
 class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     allow_reuse_address = True
     daemon_threads = True
+
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        request_handler_class: type[socketserver.BaseRequestHandler],
+        *,
+        idle_timeout_seconds: float = 0.0,
+        bind_and_activate: bool = True,
+    ) -> None:
+        self.idle_timeout_seconds = max(0.0, float(idle_timeout_seconds))
+        self._activity_lock = threading.Lock()
+        self._last_activity_at = time.monotonic()
+        self._active_connections = 0
+        super().__init__(server_address, request_handler_class, bind_and_activate)
+
+    def get_request(self) -> tuple[socket.socket, tuple[str, int]]:
+        request = super().get_request()
+        with self._activity_lock:
+            self._last_activity_at = time.monotonic()
+        return request
+
+    def connection_started(self) -> None:
+        with self._activity_lock:
+            self._active_connections += 1
+            self._last_activity_at = time.monotonic()
+
+    def connection_finished(self) -> None:
+        with self._activity_lock:
+            self._active_connections = max(0, self._active_connections - 1)
+            self._last_activity_at = time.monotonic()
+
+    def idle_expired(self) -> bool:
+        if self.idle_timeout_seconds <= 0:
+            return False
+        with self._activity_lock:
+            return bool(
+                self._active_connections == 0
+                and time.monotonic() - self._last_activity_at >= self.idle_timeout_seconds
+            )
+
+    def serve_until_idle(self) -> None:
+        if self.idle_timeout_seconds <= 0:
+            self.serve_forever()
+            return
+        self.timeout = min(1.0, max(0.05, self.idle_timeout_seconds))
+        while not self.idle_expired():
+            self.handle_request()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -195,10 +253,19 @@ def main(argv: list[str] | None = None) -> int:
     upstream = _parse_upstream(config["upstream"])
     host = str(config.get("listen_host") or "0.0.0.0")
     port = int(config["listen_port"])
+    idle_timeout_seconds = max(0.0, float(config.get("idle_timeout_seconds") or 0.0))
     BridgeHandler.upstream = upstream
-    with ThreadingTCPServer((host, port), BridgeHandler) as server:
-        print(f"damru proxy bridge listening on {host}:{port} -> {upstream.host}:{upstream.port}", flush=True)
-        server.serve_forever()
+    with ThreadingTCPServer(
+        (host, port),
+        BridgeHandler,
+        idle_timeout_seconds=idle_timeout_seconds,
+    ) as server:
+        print(
+            f"damru proxy bridge listening on {host}:{port} -> {upstream.host}:{upstream.port} "
+            f"(idle timeout: {idle_timeout_seconds:g}s)",
+            flush=True,
+        )
+        server.serve_until_idle()
     return 0
 
 

@@ -44,7 +44,7 @@ async def test_ensure_image_noop_when_present():
 
     mgr = _manager(fake)
     await mgr.ensure_image(REDROID_IMAGE)
-    assert calls == [["docker", "images", "-q", REDROID_IMAGE]]
+    assert calls == [["docker", "image", "inspect", "--format", "{{.Id}}", REDROID_IMAGE]]
 
 
 async def test_ensure_image_baked_missing_pulls_base_and_tags():
@@ -335,3 +335,17 @@ async def test_seed_adb_authorized_keys_early_writes_adb_keys(monkeypatch):
     assert "setprop ctl.restart adbd" in joined
     assert kwargs["timeout"] == 8
     assert kwargs["allow_failure"] is True
+
+
+async def test_digest_image_uses_exact_inspect_and_never_base_fallback():
+    calls = []
+    def fake(cmd, **kwargs):
+        calls.append(cmd)
+        return ''
+    mgr = _manager(fake)
+    image = 'registry.example/damru@sha256:' + 'a' * 64
+    await mgr.ensure_image(image)
+    assert calls == [
+        ['docker', 'image', 'inspect', '--format', '{{.Id}}', image],
+        ['docker', 'pull', image],
+    ]

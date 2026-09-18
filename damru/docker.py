@@ -671,7 +671,7 @@ class RedroidManager:
     async def _image_exists(self, image: str) -> bool:
         """Return True if a Docker image is present locally."""
         out = await self._run_cmd(
-            self._docker_cmd("images", "-q", image),
+            self._docker_cmd("image", "inspect", "--format", "{{.Id}}", image),
             timeout=10, allow_failure=True,
         )
         return bool(out.strip())
@@ -688,6 +688,11 @@ class RedroidManager:
         """
         if await self._image_exists(image):
             logger.debug("Image %s present", image)
+            return
+
+        if "@sha256:" in image:
+            # Immutable releases must never fall back to an unrelated base image.
+            await self._run_cmd(self._docker_cmd("pull", image), timeout=600)
             return
 
         if image == REDROID_IMAGE:

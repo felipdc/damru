@@ -16,6 +16,8 @@ from urllib.parse import urlparse
 
 from .proxy import resolve_system_proxy
 
+DEFAULT_PROXY_BRIDGE_IDLE_TIMEOUT_SECONDS = 3600.0
+
 
 def is_windows() -> bool:
     return sys.platform == "win32"
@@ -112,6 +114,16 @@ def android_proxy_host_from_route(route_text: str, *, fallback: str = "172.17.0.
     return fallback
 
 
+def _proxy_bridge_idle_timeout_seconds() -> float:
+    raw_value = os.environ.get("DAMRU_PROXY_BRIDGE_IDLE_TIMEOUT_SECONDS")
+    if raw_value is None:
+        return DEFAULT_PROXY_BRIDGE_IDLE_TIMEOUT_SECONDS
+    try:
+        return max(0.0, float(raw_value))
+    except ValueError:
+        return DEFAULT_PROXY_BRIDGE_IDLE_TIMEOUT_SECONDS
+
+
 def ensure_proxy_bridge(upstream: str, *, listen_host: str = "127.0.0.1") -> int:
     digest = hashlib.sha256(f"{listen_host}|{upstream}".encode("utf-8")).hexdigest()[:12]
     port = 18000 + (int(digest[:6], 16) % 3000)
@@ -121,7 +133,14 @@ def ensure_proxy_bridge(upstream: str, *, listen_host: str = "127.0.0.1") -> int
     script_path = repo_root() / "damru" / "proxy_bridge.py"
     linux_script = to_wsl_path(str(script_path)) if is_windows() else str(script_path)
     root_user = is_windows() or is_wsl_linux()
-    config = json.dumps({"upstream": upstream, "listen_host": listen_host, "listen_port": port})
+    config = json.dumps(
+        {
+            "upstream": upstream,
+            "listen_host": listen_host,
+            "listen_port": port,
+            "idle_timeout_seconds": _proxy_bridge_idle_timeout_seconds(),
+        }
+    )
     config_b64 = base64.b64encode(config.encode("utf-8")).decode("ascii")
 
     if not _bridge_alive(port, root_user=root_user, host=listen_host):
